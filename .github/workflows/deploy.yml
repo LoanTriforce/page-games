@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-
   workflow_dispatch:
 
 permissions:
@@ -28,12 +27,42 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 22
-          cache: npm
 
-      - name: Install dependencies
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Detect package manager
+        id: package-manager
+        shell: bash
+        run: |
+          if [ -f "yarn.lock" ]; then
+            echo "manager=yarn" >> "$GITHUB_OUTPUT"
+          elif [ -f "package-lock.json" ]; then
+            echo "manager=npm" >> "$GITHUB_OUTPUT"
+          else
+            echo "Nenhum lockfile encontrado."
+            exit 1
+          fi
+
+      - name: Install dependencies with Yarn
+        if: steps.package-manager.outputs.manager == 'yarn'
+        run: |
+          if yarn install --immutable; then
+            echo "Dependencies installed with modern Yarn"
+          else
+            yarn install --frozen-lockfile
+          fi
+
+      - name: Install dependencies with npm
+        if: steps.package-manager.outputs.manager == 'npm'
         run: npm ci
 
-      - name: Build
+      - name: Build with Yarn
+        if: steps.package-manager.outputs.manager == 'yarn'
+        run: yarn build
+
+      - name: Build with npm
+        if: steps.package-manager.outputs.manager == 'npm'
         run: npm run build
 
       - name: Upload artifact

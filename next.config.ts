@@ -1,7 +1,11 @@
-import type { NextConfig } from "next";
+const nextConfig = {
+  output: "export",
+  basePath: "/page-games",
+  trailingSlash: true,
 
-const nextConfig: NextConfig = {
-  /* config options here */
+  images: {
+    unoptimized: true,
+  },
 };
 
 export default nextConfig;

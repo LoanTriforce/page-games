@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DURATION, generate, match, path, remaining, type Puzzle } from "./engine";
 
@@ -134,10 +135,13 @@ export function WordSearchGame() {
   return (
     <main className="wordsearch-page-shell">
       <header className="wordsearch-header">
-        <a className="wordsearch-brand" href="./" aria-label="Grupo PAGE, início">
-          <span className="wordsearch-brand-small">GRUPO</span>
-          <span className="wordsearch-brand-name">page<span className="wordsearch-brand-dot">.</span></span>
-        </a>
+        <div className="wordsearch-header-start">
+          <Link className="wordsearch-back-hub" href="/">← Voltar ao Hub</Link>
+          <span className="wordsearch-brand" aria-label="Grupo PAGE">
+            <span className="wordsearch-brand-small">GRUPO</span>
+            <span className="wordsearch-brand-name">page<span className="wordsearch-brand-dot">.</span></span>
+          </span>
+        </div>
         <div className="wordsearch-event">
           <span className="wordsearch-event-mark" aria-hidden="true">✳</span>
           <div>CONEXÃO ARAXÁ<span>ENCONTRE. CONECTE. DESCUBRA.</span></div>

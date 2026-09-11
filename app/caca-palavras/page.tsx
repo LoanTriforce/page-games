@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { WordSearchGame } from "./word-search-game";
+import { WordSearchRoute } from "./word-search-route";
 
 export const metadata: Metadata = {
   title: "Caça Palavras | Page Games",
@@ -7,5 +7,5 @@ export const metadata: Metadata = {
 };
 
 export default function WordSearchPage() {
-  return <WordSearchGame />;
+  return <WordSearchRoute />;
 }

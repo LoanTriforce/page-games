@@ -24,6 +24,13 @@ export default function Home() {
               <span className="game-arrow" aria-hidden="true">↗</span>
             </Link>
           ))}
+          <Link href="/caca-palavras" className="game-card">
+            <svg className="game-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="8" y="8" width="32" height="32" rx="7" /><path d="M16 17h16M16 24h16M16 31h16M17 16l14 14M31 16 17 30" /><circle cx="16" cy="17" r="1.4" fill="currentColor" /><circle cx="24" cy="24" r="1.4" fill="currentColor" /><circle cx="32" cy="31" r="1.4" fill="currentColor" />
+            </svg>
+            <span className="game-name">Caça Palavras</span>
+            <span className="game-arrow" aria-hidden="true">↗</span>
+          </Link>
         </div>
       </section>
     </main>

@@ -78,7 +78,7 @@ export function RankingBoard() {
 
       {status === "unconfigured" && (
         <div className="event-ranking-state" role="status">
-          Configure <strong>NEXT_PUBLIC_WORD_SEARCH_RANKING_API_URL</strong> para carregar e salvar o ranking persistente.
+          Configure <strong>NEXT_PUBLIC_SUPABASE_URL</strong> e <strong>NEXT_PUBLIC_SUPABASE_ANON_KEY</strong> para carregar e salvar o ranking persistente.
         </div>
       )}
 

@@ -10,18 +10,39 @@ export type RankingEntry = GameResultInput & {
   id: string;
 };
 
-const rankingApiUrl = process.env.NEXT_PUBLIC_WORD_SEARCH_RANKING_API_URL?.trim();
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim().replace(/\/$/, "");
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+const rankingTable = process.env.NEXT_PUBLIC_WORD_SEARCH_RANKING_TABLE?.trim() || "word_search_rankings";
 export const RANKING_POLL_INTERVAL_MS = 3_000;
 
 export function isRankingConfigured() {
-  return Boolean(rankingApiUrl);
+  return Boolean(supabaseUrl && supabaseAnonKey);
 }
 
-function getRankingApiUrl() {
-  if (!rankingApiUrl) {
-    throw new Error("Configure NEXT_PUBLIC_WORD_SEARCH_RANKING_API_URL para ativar o ranking persistente.");
+function getSupabaseConfig() {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error("Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY para ativar o ranking persistente.");
   }
-  return rankingApiUrl;
+  return { supabaseUrl, supabaseAnonKey, rankingTable };
+}
+
+function getRankingEndpoint() {
+  const config = getSupabaseConfig();
+  const params = new URLSearchParams({
+    select: "id,nome,palavrasEncontradas:palavras_encontradas,tempoTotalMs:tempo_total_ms,dataInicio:data_inicio,dataFinalizacao:data_finalizacao",
+    order: "palavras_encontradas.desc,tempo_total_ms.asc,data_finalizacao.asc",
+  });
+
+  return `${config.supabaseUrl}/rest/v1/${config.rankingTable}?${params}`;
+}
+
+function getSupabaseHeaders() {
+  const config = getSupabaseConfig();
+
+  return {
+    apikey: config.supabaseAnonKey,
+    Authorization: `Bearer ${config.supabaseAnonKey}`,
+  };
 }
 
 export function sanitizePlayerName(name: string) {
@@ -36,23 +57,19 @@ export function formatDuration(ms: number) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-export function sortRanking(entries: RankingEntry[]) {
-  return [...entries].sort(
-    (a, b) =>
-      b.palavrasEncontradas - a.palavrasEncontradas ||
-      a.tempoTotalMs - b.tempoTotalMs ||
-      new Date(a.dataFinalizacao).getTime() - new Date(b.dataFinalizacao).getTime(),
-  );
-}
-
 function normalizeEntry(value: unknown): RankingEntry | null {
   if (!value || typeof value !== "object") return null;
-  const item = value as Partial<RankingEntry>;
+  const item = value as Partial<RankingEntry> & {
+    palavras_encontradas?: unknown;
+    tempo_total_ms?: unknown;
+    data_inicio?: unknown;
+    data_finalizacao?: unknown;
+  };
   const nome = typeof item.nome === "string" ? sanitizePlayerName(item.nome) : "";
-  const palavrasEncontradas = Number(item.palavrasEncontradas);
-  const tempoTotalMs = Number(item.tempoTotalMs);
-  const dataInicio = typeof item.dataInicio === "string" ? item.dataInicio : "";
-  const dataFinalizacao = typeof item.dataFinalizacao === "string" ? item.dataFinalizacao : "";
+  const palavrasEncontradas = Number(item.palavrasEncontradas ?? item.palavras_encontradas);
+  const tempoTotalMs = Number(item.tempoTotalMs ?? item.tempo_total_ms);
+  const dataInicio = typeof item.dataInicio === "string" ? item.dataInicio : typeof item.data_inicio === "string" ? item.data_inicio : "";
+  const dataFinalizacao = typeof item.dataFinalizacao === "string" ? item.dataFinalizacao : typeof item.data_finalizacao === "string" ? item.data_finalizacao : "";
   const id = typeof item.id === "string" && item.id.trim() ? item.id : `${nome}-${dataFinalizacao}-${tempoTotalMs}`;
 
   if (!nome || !Number.isFinite(palavrasEncontradas) || !Number.isFinite(tempoTotalMs) || !dataInicio || !dataFinalizacao) return null;
@@ -68,12 +85,15 @@ function normalizeRankingPayload(payload: unknown) {
       ? (payload as { results: unknown[] }).results
       : [];
 
-  return sortRanking(list.map(normalizeEntry).filter((entry): entry is RankingEntry => entry !== null));
+  return list.map(normalizeEntry).filter((entry): entry is RankingEntry => entry !== null);
 }
 
 export async function fetchRanking() {
-  const response = await fetch(getRankingApiUrl(), {
-    headers: { Accept: "application/json" },
+  const response = await fetch(getRankingEndpoint(), {
+    headers: {
+      ...getSupabaseHeaders(),
+      Accept: "application/json",
+    },
     cache: "no-store",
   });
 
@@ -92,18 +112,21 @@ export async function submitGameResult(input: GameResultInput, totalWords: numbe
   }
   if (!Number.isFinite(tempoTotalMs) || tempoTotalMs < 0) throw new Error("Tempo total inválido.");
 
-  const response = await fetch(getRankingApiUrl(), {
+  const config = getSupabaseConfig();
+  const response = await fetch(`${config.supabaseUrl}/rest/v1/${config.rankingTable}`, {
     method: "POST",
     headers: {
+      ...getSupabaseHeaders(),
       Accept: "application/json",
       "Content-Type": "application/json",
+      Prefer: "return=minimal",
     },
     body: JSON.stringify({
       nome,
-      palavrasEncontradas,
-      tempoTotalMs: Math.round(tempoTotalMs),
-      dataInicio: input.dataInicio,
-      dataFinalizacao: input.dataFinalizacao,
+      palavras_encontradas: palavrasEncontradas,
+      tempo_total_ms: Math.round(tempoTotalMs),
+      data_inicio: input.dataInicio,
+      data_finalizacao: input.dataFinalizacao,
     }),
   });
 

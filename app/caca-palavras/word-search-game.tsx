@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DURATION, generate, match, path, remaining, type Puzzle } from "./engine";
+import { formatDuration, isRankingConfigured, sanitizePlayerName, submitGameResult } from "../ranking/ranking-service";
 
 type Phase = "ready" | "playing" | "finished";
 type PointerState = { id: number; start: number; oldAnchor: number | null; moved: boolean };
@@ -20,22 +21,49 @@ export function WordSearchGame() {
   const [timeLeft, setTimeLeft] = useState(DURATION);
   const [round, setRound] = useState(0);
   const [feedback, setFeedback] = useState("Cada palavra revela uma conexão do ecossistema PAGE.");
+  const [rankingStatus, setRankingStatus] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
   const [showResult, setShowResult] = useState(false);
   const [won, setWon] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  const [playerName, setPlayerName] = useState("");
   const pointer = useRef<PointerState | null>(null);
+  const startedAt = useRef<number | null>(null);
+  const resultSent = useRef(false);
 
   const running = phase === "playing";
 
   const finish = useCallback((success: boolean, count = found.size) => {
+    const finishedAt = Date.now();
+    const started = startedAt.current ?? finishedAt;
+    const totalTime = Math.min(DURATION, Math.max(0, finishedAt - started));
+
     setPhase("finished");
     setAnchor(null);
     setPreview([]);
     setWon(success);
     setShowResult(true);
-    setFeedback(`Rodada encerrada: ${count} de 6 palavras encontradas.`);
-  }, [found.size]);
+    setFeedback(`Rodada encerrada: ${count} de ${puzzle.words.length} palavras encontradas.`);
+
+    if (resultSent.current) return;
+    resultSent.current = true;
+
+    if (!isRankingConfigured()) {
+      setRankingStatus("Ranking persistente não configurado.");
+      return;
+    }
+
+    setRankingStatus("Enviando resultado para o ranking...");
+    void submitGameResult({
+      nome: playerName,
+      palavrasEncontradas: count,
+      tempoTotalMs: totalTime,
+      dataInicio: new Date(started).toISOString(),
+      dataFinalizacao: new Date(finishedAt).toISOString(),
+    }, puzzle.words.length)
+      .then(() => setRankingStatus(`Resultado enviado: ${count} palavras em ${formatDuration(totalTime)}.`))
+      .catch(() => setRankingStatus("Não foi possível enviar o resultado para o ranking."));
+  }, [found.size, playerName, puzzle.words.length]);
 
   useEffect(() => {
     if (!running) return;
@@ -62,16 +90,27 @@ export function WordSearchGame() {
     setPreview([]);
     setTimeLeft(DURATION);
     setFeedback("Cada palavra revela uma conexão do ecossistema PAGE.");
+    setRankingStatus("");
     setWon(false);
     setShowResult(false);
     setReviewing(false);
+    startedAt.current = null;
+    resultSent.current = false;
   }
 
   function start() {
     if (phase !== "ready") return;
+    if (!sanitizePlayerName(playerName)) {
+      setFeedback("Informe o nome do participante antes de começar.");
+      return;
+    }
+    const now = Date.now();
+    startedAt.current = now;
+    resultSent.current = false;
     setRound((value) => value + 1);
-    setDeadline(Date.now() + DURATION);
+    setDeadline(now + DURATION);
     setTimeLeft(DURATION);
+    setRankingStatus("");
     setPhase("playing");
     setFeedback("Vamos lá! Selecione uma palavra na grade.");
   }
@@ -79,9 +118,17 @@ export function WordSearchGame() {
   function restart() {
     setShowConfirm(false);
     reset(generate());
+    if (!sanitizePlayerName(playerName)) {
+      setFeedback("Informe o nome do participante antes de começar.");
+      return;
+    }
+    const now = Date.now();
+    startedAt.current = now;
+    resultSent.current = false;
     setRound((value) => value + 1);
-    setDeadline(Date.now() + DURATION);
+    setDeadline(now + DURATION);
     setTimeLeft(DURATION);
+    setRankingStatus("");
     setPhase("playing");
     setFeedback("Nova grade iniciada. Encontre as seis palavras.");
   }
@@ -233,7 +280,16 @@ export function WordSearchGame() {
                   <div className="wordsearch-cover-icon" aria-hidden="true">P<span>↗</span></div>
                   <h2>Encontre sua<br />próxima conexão.</h2>
                   <p>Localize as 6 palavras da lista.<br />Toque na primeira e na última letra, ou arraste entre elas.</p>
-                  <button className="wordsearch-primary" onClick={start} type="button">Começar desafio <span aria-hidden="true">↗</span></button>
+                  <label className="wordsearch-player-name">
+                    <span>Nome do participante</span>
+                    <input
+                      maxLength={40}
+                      onChange={(event) => setPlayerName(event.target.value)}
+                      placeholder="Digite seu nome"
+                      value={playerName}
+                    />
+                  </label>
+                  <button className="wordsearch-primary" disabled={!sanitizePlayerName(playerName)} onClick={start} type="button">Começar desafio <span aria-hidden="true">↗</span></button>
                   <span className="wordsearch-cover-foot">45 segundos para encontrar as conexões do universo PAGE.</span>
                 </div>
               )}
@@ -291,6 +347,7 @@ export function WordSearchGame() {
             <h2 id="result-title">{won ? "Conexão completa!" : "Tempo encerrado!"}</h2>
             <span>{won ? "Você encontrou todo o universo PAGE." : "Cada descoberta conta. Que tal mais uma rodada?"}</span>
             <strong className="wordsearch-result-count">{found.size}<small>de {puzzle.words.length} palavras<br />encontradas</small></strong>
+            {rankingStatus && <span className="wordsearch-ranking-status">{rankingStatus}</span>}
             <div>
               <button className="wordsearch-primary" onClick={() => { setShowResult(false); setShowConfirm(true); }} type="button">Nova grade <span aria-hidden="true">↗</span></button>
               <button className="wordsearch-secondary" onClick={revealAnswers} type="button">Ver respostas na grade</button>

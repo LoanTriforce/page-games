@@ -62,7 +62,9 @@ export function sanitizePlayerName(name: string) {
 }
 
 export function normalizePhone(phone: string) {
-  return phone.replace(/\D/g, "").slice(0, 11);
+  const digits = phone.replace(/\D/g, "");
+  const withoutCountryCode = digits.length > 11 && digits.startsWith("55") ? digits.slice(2) : digits;
+  return withoutCountryCode.slice(0, 11);
 }
 
 export function isValidBrazilianPhone(phone: string) {

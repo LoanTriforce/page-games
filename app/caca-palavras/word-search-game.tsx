@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DURATION, generate, match, path, remaining, type Puzzle } from "./engine";
-import { calculateScore, formatDuration, formatPhone, isRankingConfigured, isValidBrazilianPhone, normalizePhone, sanitizePlayerName, submitGameResult } from "../ranking/ranking-service";
+import { calculateScore, formatPhone, formatRankingDuration, isRankingConfigured, isValidBrazilianPhone, normalizePhone, sanitizePlayerName, submitGameResult, type FoundWordDetail } from "../ranking/ranking-service";
 
 type Phase = "ready" | "playing" | "finished";
 type PointerState = { id: number; start: number; oldAnchor: number | null; moved: boolean };
@@ -32,7 +32,9 @@ export function WordSearchGame() {
   const [finalFoundCount, setFinalFoundCount] = useState(0);
   const [finalScore, setFinalScore] = useState(0);
   const pointer = useRef<PointerState | null>(null);
-  const startedAt = useRef<number | null>(null);
+  const gameStartTime = useRef<number | null>(null);
+  const gameStartDate = useRef<number | null>(null);
+  const foundWords = useRef<FoundWordDetail[]>([]);
   const resultSent = useRef(false);
   const gameSessionId = useRef<string | null>(null);
   const currentPlayer = useRef<{ nome: string; telefone: string } | null>(null);
@@ -40,10 +42,12 @@ export function WordSearchGame() {
   const running = phase === "playing";
 
   const finish = useCallback((success: boolean, count = found.size) => {
-    const finishedAt = Date.now();
-    const started = startedAt.current ?? finishedAt;
-    const totalTime = Math.min(DURATION, Math.max(0, finishedAt - started));
-    const score = calculateScore(count, totalTime);
+    const finishedAtDate = Date.now();
+    const elapsedMs = gameStartTime.current === null ? 0 : Math.min(DURATION, Math.max(0, performance.now() - gameStartTime.current));
+    const detailedWords = foundWords.current.slice(0, count);
+    const tempoResultadoMs = Math.round(detailedWords.length > 0 ? detailedWords[detailedWords.length - 1].foundAtMs : elapsedMs);
+    const startedDate = gameStartDate.current ?? finishedAtDate;
+    const score = calculateScore(count, tempoResultadoMs);
     const player = currentPlayer.current;
 
     setPhase("finished");
@@ -75,19 +79,20 @@ export function WordSearchGame() {
       telefone: player.telefone,
       palavrasEncontradas: count,
       totalPalavras: puzzle.words.length,
-      tempoTotalMs: totalTime,
+      tempoResultadoMs,
       pontuacao: score,
-      dataInicio: new Date(started).toISOString(),
-      dataFinalizacao: new Date(finishedAt).toISOString(),
+      palavrasDetalhadas: detailedWords,
+      dataInicio: new Date(startedDate).toISOString(),
+      dataFinalizacao: new Date(finishedAtDate).toISOString(),
     }, puzzle.words.length)
-      .then(() => setRankingStatus(`Resultado enviado: ${count} palavras em ${formatDuration(totalTime)} · ${score.toLocaleString("pt-BR")} pts.`))
+      .then(() => setRankingStatus(`Resultado enviado: ${count} ${count === 1 ? "palavra" : "palavras"} em ${formatRankingDuration(tempoResultadoMs)} · ${score.toLocaleString("pt-BR")} pts.`))
       .catch(() => setRankingStatus("Não foi possível enviar o resultado para o ranking."));
   }, [found.size, puzzle.words.length]);
 
   useEffect(() => {
     if (!running) return;
     const update = () => {
-      const ms = remaining(deadline, Date.now());
+      const ms = remaining(deadline, performance.now());
       setTimeLeft(ms);
       if (ms <= 0) finish(false);
     };
@@ -118,7 +123,9 @@ export function WordSearchGame() {
     setPlayerPhone("");
     setFinalFoundCount(0);
     setFinalScore(0);
-    startedAt.current = null;
+    gameStartTime.current = null;
+    gameStartDate.current = null;
+    foundWords.current = [];
     resultSent.current = false;
     gameSessionId.current = null;
     currentPlayer.current = null;
@@ -139,13 +146,16 @@ export function WordSearchGame() {
       return;
     }
 
-    const now = Date.now();
+    const now = performance.now();
+    const startedDate = Date.now();
     const sessionId = crypto.randomUUID();
     setPlayerName(nome);
     setPlayerPhone(formatPhone(telefone));
     currentPlayer.current = { nome, telefone };
     gameSessionId.current = sessionId;
-    startedAt.current = now;
+    gameStartTime.current = now;
+    gameStartDate.current = startedDate;
+    foundWords.current = [];
     resultSent.current = false;
     setRound((value) => value + 1);
     setDeadline(now + DURATION);
@@ -163,7 +173,7 @@ export function WordSearchGame() {
 
   function isActive() {
     if (phase !== "playing") return false;
-    if (Date.now() >= deadline) {
+    if (performance.now() >= deadline) {
       finish(false);
       return false;
     }
@@ -180,9 +190,15 @@ export function WordSearchGame() {
       setFeedback("Ainda não! Procure uma palavra da lista.");
       return;
     }
+    if (found.has(word.text) || foundWords.current.some((detail) => detail.word === word.text)) {
+      setFeedback(`${word.label} já foi registrada nesta rodada.`);
+      return;
+    }
+    const elapsedMs = Math.round(Math.min(DURATION, Math.max(0, performance.now() - (gameStartTime.current ?? performance.now()))));
     const nextFound = new Set(found).add(word.text);
     const nextCells = new Set(foundCells);
     cells.forEach((cell) => nextCells.add(cell));
+    foundWords.current = [...foundWords.current, { word: word.text, foundAtMs: elapsedMs }];
     setFound(nextFound);
     setFoundCells(nextCells);
     setFeedback(`${word.label} encontrada! Uma conexão com ${word.product}.`);

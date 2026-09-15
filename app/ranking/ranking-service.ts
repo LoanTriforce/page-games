@@ -1,20 +1,30 @@
+export type FoundWordDetail = {
+  word: string;
+  foundAtMs: number;
+};
+
 export type GameResultInput = {
   id: string;
   nome: string;
   telefone: string;
   palavrasEncontradas: number;
   totalPalavras: number;
-  tempoTotalMs: number;
+  tempoResultadoMs: number;
   pontuacao: number;
+  palavrasDetalhadas: FoundWordDetail[];
   dataInicio: string;
   dataFinalizacao: string;
 };
 
-export type RankingEntry = GameResultInput;
+export type RankingEntry = Omit<GameResultInput, "telefone" | "palavrasDetalhadas"> & {
+  telefone?: string;
+};
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim().replace(/\/$/, "");
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
 const rankingTable = process.env.NEXT_PUBLIC_WORD_SEARCH_RANKING_TABLE?.trim() || "word_search_rankings";
+const MAX_ROUND_TIME_MS = 45_000;
+const POINTS_PER_WORD = 100_000;
 export const RANKING_POLL_INTERVAL_MS = 3_000;
 
 export function isRankingConfigured() {
@@ -31,8 +41,8 @@ function getSupabaseConfig() {
 function getRankingEndpoint() {
   const config = getSupabaseConfig();
   const params = new URLSearchParams({
-    select: "id,nome,telefone,palavrasEncontradas:palavras_encontradas,totalPalavras:total_palavras,tempoTotalMs:tempo_total_ms,pontuacao,dataInicio:data_inicio,dataFinalizacao:data_finalizacao",
-    order: "pontuacao.desc,palavras_encontradas.desc,tempo_total_ms.asc,data_finalizacao.asc",
+    select: "id,nome,palavrasEncontradas:palavras_encontradas,totalPalavras:total_palavras,tempoResultadoMs:tempo_total_ms,pontuacao,dataInicio:data_inicio,dataFinalizacao:data_finalizacao",
+    order: "palavras_encontradas.desc,tempo_total_ms.asc,pontuacao.desc,data_finalizacao.asc",
   });
 
   return `${config.supabaseUrl}/rest/v1/${config.rankingTable}?${params}`;
@@ -82,12 +92,31 @@ export function formatDuration(ms: number) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-export function calculateScore(wordsFound: number, timeMs: number) {
-  // Cada palavra vale 100.000 pontos, e o tempo gasto é subtraído em milissegundos.
+export function formatRankingDuration(ms: number) {
+  const safeMs = Math.max(0, Math.round(ms));
+  const seconds = safeMs / 1000;
+  const hasTenths = safeMs % 1000 !== 0;
+  return `${seconds.toLocaleString("pt-BR", {
+    minimumFractionDigits: hasTenths ? 1 : 0,
+    maximumFractionDigits: hasTenths ? 1 : 0,
+  })}s`;
+}
+
+export function formatWordCount(wordsFound: number) {
+  const safeWords = Math.max(0, Math.round(wordsFound));
+  return `${safeWords} ${safeWords === 1 ? "palavra" : "palavras"}`;
+}
+
+export function formatRankingResult(wordsFound: number, elapsedMs: number) {
+  return `${formatWordCount(wordsFound)} em ${formatRankingDuration(elapsedMs)}`;
+}
+
+export function calculateScore(wordsFound: number, elapsedMs: number) {
+  // Cada palavra vale 100.000 pontos, e o tempo da última palavra encontrada é subtraído em milissegundos.
   // Como a rodada tem 45.000 ms, uma palavra extra sempre vale mais que qualquer bônus de velocidade.
   const safeWords = Math.max(0, Math.round(wordsFound));
-  const safeTime = Math.max(0, Math.round(timeMs));
-  return Math.max(0, safeWords * 100_000 - safeTime);
+  const safeTime = Math.max(0, Math.round(elapsedMs));
+  return Math.max(0, safeWords * POINTS_PER_WORD - safeTime);
 }
 
 function normalizeEntry(value: unknown): RankingEntry | null {
@@ -100,19 +129,18 @@ function normalizeEntry(value: unknown): RankingEntry | null {
     data_finalizacao?: unknown;
   };
   const nome = typeof item.nome === "string" ? sanitizePlayerName(item.nome) : "";
-  const telefone = typeof item.telefone === "string" ? normalizePhone(item.telefone) : "";
   const palavrasEncontradas = Number(item.palavrasEncontradas ?? item.palavras_encontradas);
   const totalPalavras = Number(item.totalPalavras ?? item.total_palavras);
-  const tempoTotalMs = Number(item.tempoTotalMs ?? item.tempo_total_ms);
+  const tempoResultadoMs = Number(item.tempoResultadoMs ?? item.tempo_total_ms);
   const pontuacao = Number(item.pontuacao);
   const dataInicio = typeof item.dataInicio === "string" ? item.dataInicio : typeof item.data_inicio === "string" ? item.data_inicio : "";
   const dataFinalizacao = typeof item.dataFinalizacao === "string" ? item.dataFinalizacao : typeof item.data_finalizacao === "string" ? item.data_finalizacao : "";
-  const id = typeof item.id === "string" && item.id.trim() ? item.id : `${nome}-${dataFinalizacao}-${tempoTotalMs}`;
+  const id = typeof item.id === "string" && item.id.trim() ? item.id : `${nome}-${dataFinalizacao}-${tempoResultadoMs}`;
 
-  if (!id || !nome || !Number.isFinite(palavrasEncontradas) || !Number.isFinite(totalPalavras) || !Number.isFinite(tempoTotalMs) || !Number.isFinite(pontuacao) || !dataInicio || !dataFinalizacao) return null;
-  if (palavrasEncontradas < 0 || totalPalavras < 1 || palavrasEncontradas > totalPalavras || tempoTotalMs < 0 || pontuacao < 0) return null;
+  if (!id || !nome || !Number.isFinite(palavrasEncontradas) || !Number.isFinite(totalPalavras) || !Number.isFinite(tempoResultadoMs) || !Number.isFinite(pontuacao) || !dataInicio || !dataFinalizacao) return null;
+  if (palavrasEncontradas < 0 || totalPalavras < 1 || palavrasEncontradas > totalPalavras || tempoResultadoMs < 0 || pontuacao < 0) return null;
 
-  return { id, nome, telefone, palavrasEncontradas, totalPalavras, tempoTotalMs, pontuacao, dataInicio, dataFinalizacao };
+  return { id, nome, palavrasEncontradas, totalPalavras, tempoResultadoMs, pontuacao, dataInicio, dataFinalizacao };
 }
 
 function normalizeRankingPayload(payload: unknown) {
@@ -123,6 +151,30 @@ function normalizeRankingPayload(payload: unknown) {
       : [];
 
   return list.map(normalizeEntry).filter((entry): entry is RankingEntry => entry !== null);
+}
+
+function normalizeFoundWordDetails(details: FoundWordDetail[]) {
+  return details
+    .map((detail) => ({
+      word: typeof detail.word === "string" ? detail.word.trim().slice(0, 40) : "",
+      foundAtMs: Math.max(0, Math.round(Number(detail.foundAtMs))),
+    }))
+    .filter((detail) => detail.word && Number.isFinite(detail.foundAtMs) && detail.foundAtMs <= MAX_ROUND_TIME_MS);
+}
+
+function validateFoundWordDetails(details: FoundWordDetail[], wordsFound: number, elapsedMs: number) {
+  if (details.length !== wordsFound) return false;
+  const uniqueWords = new Set(details.map((detail) => detail.word));
+  if (uniqueWords.size !== details.length) return false;
+  if (wordsFound === 0) return true;
+
+  let previous = -1;
+  for (const detail of details) {
+    if (detail.foundAtMs < previous) return false;
+    previous = detail.foundAtMs;
+  }
+
+  return details[details.length - 1]?.foundAtMs === elapsedMs;
 }
 
 export async function fetchRanking() {
@@ -144,9 +196,10 @@ export async function submitGameResult(input: GameResultInput, totalWords: numbe
   const telefone = normalizePhone(input.telefone);
   const palavrasEncontradas = Number(input.palavrasEncontradas);
   const totalPalavras = Number(input.totalPalavras);
-  const tempoTotalMs = Number(input.tempoTotalMs);
+  const tempoResultadoMs = Math.round(Number(input.tempoResultadoMs));
   const pontuacao = Number(input.pontuacao);
-  const expectedScore = calculateScore(palavrasEncontradas, tempoTotalMs);
+  const palavrasDetalhadas = normalizeFoundWordDetails(input.palavrasDetalhadas);
+  const expectedScore = calculateScore(palavrasEncontradas, tempoResultadoMs);
 
   if (!id) throw new Error("Rodada sem identificador.");
   if (!nome) throw new Error("Informe o nome do participante antes de iniciar.");
@@ -155,8 +208,9 @@ export async function submitGameResult(input: GameResultInput, totalWords: numbe
   if (!Number.isInteger(palavrasEncontradas) || palavrasEncontradas < 0 || palavrasEncontradas > totalPalavras) {
     throw new Error("Quantidade de palavras inválida.");
   }
-  if (!Number.isFinite(tempoTotalMs) || tempoTotalMs < 0) throw new Error("Tempo total inválido.");
+  if (!Number.isInteger(tempoResultadoMs) || tempoResultadoMs < 0 || tempoResultadoMs > MAX_ROUND_TIME_MS) throw new Error("Tempo de resultado inválido.");
   if (!Number.isInteger(pontuacao) || pontuacao !== expectedScore) throw new Error("Pontuação inválida.");
+  if (!validateFoundWordDetails(palavrasDetalhadas, palavrasEncontradas, tempoResultadoMs)) throw new Error("Detalhamento de palavras inválido.");
 
   const config = getSupabaseConfig();
   const response = await fetch(`${config.supabaseUrl}/rest/v1/${config.rankingTable}`, {
@@ -173,8 +227,9 @@ export async function submitGameResult(input: GameResultInput, totalWords: numbe
       telefone,
       palavras_encontradas: palavrasEncontradas,
       total_palavras: totalPalavras,
-      tempo_total_ms: Math.round(tempoTotalMs),
+      tempo_total_ms: tempoResultadoMs,
       pontuacao,
+      palavras_detalhadas: palavrasDetalhadas,
       data_inicio: input.dataInicio,
       data_finalizacao: input.dataFinalizacao,
     }),

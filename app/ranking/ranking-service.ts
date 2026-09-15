@@ -62,7 +62,9 @@ export function sanitizePlayerName(name: string) {
 }
 
 export function normalizePhone(phone: string) {
-  return phone.replace(/\D/g, "").slice(0, 11);
+  const digits = phone.replace(/\D/g, "");
+  const withoutCountryCode = digits.length > 11 && digits.startsWith("55") ? digits.slice(2) : digits;
+  return withoutCountryCode.slice(0, 11);
 }
 
 export function isValidBrazilianPhone(phone: string) {
@@ -108,7 +110,8 @@ export function formatWordCount(wordsFound: number) {
 }
 
 export function formatRankingResult(wordsFound: number, elapsedMs: number) {
-  return `${formatWordCount(wordsFound)} em ${formatRankingDuration(elapsedMs)}`;
+  const safeWords = Math.max(0, Math.round(wordsFound));
+  return `${formatWordCount(safeWords)} ${safeWords === 1 ? "encontrada" : "encontradas"} em ${formatRankingDuration(elapsedMs)}`;
 }
 
 export function calculateScore(wordsFound: number, elapsedMs: number) {

@@ -358,7 +358,7 @@ export function WordSearchGame() {
                       />
                     </label>
                   </div>
-                  <button className="wordsearch-primary" disabled={!sanitizePlayerName(playerName) || !isValidBrazilianPhone(playerPhone)} onClick={start} type="button">Começar desafio <span aria-hidden="true">↗</span></button>
+                  <button className="wordsearch-primary" onClick={start} type="button">Começar desafio <span aria-hidden="true">↗</span></button>
                   <span className="wordsearch-cover-foot">45 segundos para encontrar as conexões do universo PAGE.</span>
                 </div>
               )}

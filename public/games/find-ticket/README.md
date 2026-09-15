@@ -1,0 +1,1 @@
+The playable bag uses bag-pixel-v2.png as its background and sprite-*.png as transparent 96px pixel-art objects. Targets and scene positions are configured in app/minigames/encontre-o-ingresso/engine.ts. Replace a sprite with the same filename to update its art. The full-resolution originals remain in Codex generated_images, while the game ships only the compact sprites.

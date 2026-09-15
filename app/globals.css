@@ -201,6 +201,7 @@ button:disabled { cursor: default; }
 .wordsearch-secondary { display: block; border: 1px solid #d6c8e8; border-radius: 9px; background: white; color: #391766; font-size: 14px; font-weight: 800; margin: 0; padding: 8px; min-height: 52px; }
 .wordsearch-result-count { display: flex; align-items: center; justify-content: center; gap: 17px; margin: 18px 0 0; background: #efe5ff; border-radius: 12px; padding: 12px; font-size: 60px; color: #5b2ac7; font-family: var(--font-display), Arial, sans-serif; }
 .wordsearch-result-count small { text-align: left; font-size: 14px; line-height: 1.5; color: var(--wordsearch-ink); font-family: var(--font-body), Arial, sans-serif; font-weight: 400; }
+.wordsearch-result-score { margin-top: 10px; display: block; color: #321060; font-size: 18px; font-weight: 900; }
 @media (max-width: 1100px) {
   .wordsearch-header { padding-inline: 24px; }
   .wordsearch-shell { padding: 10px 24px 14px; }
@@ -213,7 +214,9 @@ button:disabled { cursor: default; }
 @media (max-width: 680px) {
   .wordsearch-header { height: var(--wordsearch-header-height); padding: 6px 16px; grid-template-columns: 1fr auto; }
   .wordsearch-event { display: none; }
+  .wordsearch-header-actions { align-items: flex-end; }
   .wordsearch-edition { font-size: 10px; }
+  .wordsearch-ranking-link { min-height: 32px; padding: 7px 10px; font-size: 10px; }
   .wordsearch-brand-name { font-size: 29px; }
   .wordsearch-brand-small { font-size: 9px; letter-spacing: 5px; }
   .wordsearch-shell { padding: 8px 14px 10px; }
@@ -247,7 +250,11 @@ button:disabled { cursor: default; }
   .wordsearch-cell { transition: none; }
 }
 
-.wordsearch-player-name { width: min(300px, 100%); display: grid; gap: 6px; margin: 1px 0 4px; text-align: left; color: var(--wordsearch-ink); font-size: 11px; font-weight: 800; letter-spacing: .4px; }
+.wordsearch-header-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+.wordsearch-ranking-link { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 10px; border: 1px solid rgba(255,255,255,.18); border-radius: 999px; background: rgba(255,255,255,.08); color: #efe8ff; padding: 9px 13px; font-size: 11px; font-weight: 900; letter-spacing: 1.4px; text-transform: uppercase; }
+.wordsearch-ranking-link:hover { color: var(--wordsearch-lime); border-color: rgba(213,255,48,.6); background: rgba(255,255,255,.13); }
+.wordsearch-player-fields { width: min(300px, 100%); display: grid; gap: 7px; margin: 1px 0 7px; }
+.wordsearch-player-name { width: 100%; display: grid; gap: 6px; margin: 0; text-align: left; color: var(--wordsearch-ink); font-size: 11px; font-weight: 800; letter-spacing: .4px; }
 .wordsearch-player-name input { width: 100%; min-height: 42px; border: 1px solid var(--wordsearch-line); border-radius: 10px; padding: 10px 12px; background: #fff; color: var(--wordsearch-ink); font: inherit; font-size: 14px; letter-spacing: 0; outline: none; }
 .wordsearch-player-name input:focus-visible { outline: 3px solid var(--wordsearch-lime); outline-offset: 3px; border-color: #5b2ac7; }
 .wordsearch-ranking-status { margin-top: 12px; padding: 10px 12px; display: block; border-radius: 12px; background: #efe5ff; color: #4a2078; font-size: 13px; font-weight: 800; }
@@ -272,11 +279,15 @@ button:disabled { cursor: default; }
 .event-ranking-position { color: var(--muted); font-size: clamp(13px, 1vw, 16px); font-weight: 900; letter-spacing: 2px; text-transform: uppercase; }
 .rank-1 .event-ranking-position { color: #fff1a8; }
 .event-ranking-podium-card h2 { margin: 14px 0 0; font-family: var(--font-display), system-ui, sans-serif; font-size: clamp(28px, 3.4vw, 54px); line-height: .95; letter-spacing: -2px; overflow-wrap: anywhere; }
+.event-ranking-podium-card small { margin-top: 8px; color: var(--muted); font-size: clamp(13px, 1vw, 16px); font-style: normal; font-weight: 800; }
 .event-ranking-podium-card p { margin: 18px 0 0; color: var(--muted); font-size: clamp(16px, 1.5vw, 24px); font-weight: 900; }
 .rank-1 p { color: #fff4bd; }
+.rank-1 small { color: #fff1a8; }
 .event-ranking-podium-card strong { margin-top: 8px; font-size: clamp(26px, 3vw, 48px); font-variant-numeric: tabular-nums; }
+.event-ranking-podium-card em { color: var(--muted); font-size: clamp(14px, 1.2vw, 18px); font-style: normal; font-weight: 900; font-variant-numeric: tabular-nums; }
+.rank-1 em { color: #fff4bd; }
 .event-ranking-list { border: 1px solid var(--border); border-radius: 26px; background: #0e1138cc; overflow: hidden; }
-.event-ranking-list-header, .event-ranking-row { display: grid; grid-template-columns: 120px minmax(0, 1fr) 190px 150px; align-items: center; gap: 18px; }
+.event-ranking-list-header, .event-ranking-row { display: grid; grid-template-columns: 92px minmax(0, 1fr) 170px 150px 110px 160px; align-items: center; gap: 18px; }
 .event-ranking-list-header { padding: 16px 24px; color: var(--muted); background: #ffffff08; font-size: 12px; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase; }
 .event-ranking-list ol { list-style: none; margin: 0; padding: 0; max-height: 42vh; overflow-y: auto; }
 .event-ranking-row { min-height: 72px; padding: 16px 24px; border-top: 1px solid var(--border); font-size: clamp(18px, 1.6vw, 28px); animation: ranking-enter .28s ease both; }
@@ -290,7 +301,7 @@ button:disabled { cursor: default; }
   .event-ranking-heading span { grid-column: auto; grid-row: auto; }
   .event-ranking-podium { grid-template-columns: 1fr; }
   .event-ranking-podium-card, .event-ranking-podium-card.rank-1 { order: initial; min-height: 170px; }
-  .event-ranking-list-header, .event-ranking-row { grid-template-columns: 86px minmax(0, 1fr) 140px 120px; }
+  .event-ranking-list-header, .event-ranking-row { grid-template-columns: 70px minmax(0, 1fr) 150px 120px 90px 130px; gap: 12px; }
 }
 @media (max-width: 700px) {
   .event-ranking-page { padding: 20px; }
@@ -298,7 +309,7 @@ button:disabled { cursor: default; }
   .event-ranking-heading h1 { letter-spacing: -2px; }
   .event-ranking-list-header { display: none; }
   .event-ranking-row { grid-template-columns: 64px minmax(0, 1fr); gap: 8px 14px; }
-  .event-ranking-row strong { grid-column: 2; }
+  .event-ranking-row span:not(.event-ranking-row-position):not(.event-ranking-row-name), .event-ranking-row strong { grid-column: 2; font-size: 15px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .event-ranking-podium-card, .event-ranking-row { animation: none; }

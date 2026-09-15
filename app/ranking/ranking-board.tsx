@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchRanking, formatDuration, isRankingConfigured, RANKING_POLL_INTERVAL_MS, type RankingEntry } from "./ranking-service";
+import { fetchRanking, formatDuration, formatPhone, formatScore, isRankingConfigured, RANKING_POLL_INTERVAL_MS, type RankingEntry } from "./ranking-service";
 
 const medals = ["🥇", "🥈", "🥉"];
 
@@ -13,8 +13,10 @@ function RankingPodium({ entries }: { entries: RankingEntry[] }) {
           <span className="event-ranking-medal" aria-hidden="true">{medals[index]}</span>
           <span className="event-ranking-position">{index + 1}º lugar</span>
           <h2>{entry.nome}</h2>
-          <p>{entry.palavrasEncontradas} palavras</p>
-          <strong>{formatDuration(entry.tempoTotalMs)}</strong>
+          <small>{formatPhone(entry.telefone) || "Telefone não informado"}</small>
+          <p>{entry.palavrasEncontradas} de {entry.totalPalavras} palavras</p>
+          <strong>{formatScore(entry.pontuacao)} pts</strong>
+          <em>{formatDuration(entry.tempoTotalMs)}</em>
         </article>
       ))}
     </section>
@@ -26,8 +28,10 @@ function RankingRow({ entry, position }: { entry: RankingEntry; position: number
     <li className="event-ranking-row">
       <span className="event-ranking-row-position">{position}º</span>
       <span className="event-ranking-row-name">{entry.nome}</span>
-      <span>{entry.palavrasEncontradas} palavras</span>
-      <strong>{formatDuration(entry.tempoTotalMs)}</strong>
+      <span>{formatPhone(entry.telefone) || "Telefone não informado"}</span>
+      <span>{entry.palavrasEncontradas}/{entry.totalPalavras} palavras</span>
+      <span>{formatDuration(entry.tempoTotalMs)}</span>
+      <strong>{formatScore(entry.pontuacao)} pts</strong>
     </li>
   );
 }
@@ -91,8 +95,10 @@ export function RankingBoard() {
         <div className="event-ranking-list-header">
           <span>Posição</span>
           <span>Participante</span>
+          <span>Telefone</span>
           <span>Palavras</span>
           <span>Tempo</span>
+          <span>Pontuação</span>
         </div>
         {remaining.length > 0 ? (
           <ol>

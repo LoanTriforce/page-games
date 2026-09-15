@@ -1,16 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DURATION, generate, match, path, remaining, type Puzzle } from "./engine";
-import { formatDuration, isRankingConfigured, sanitizePlayerName, submitGameResult } from "../ranking/ranking-service";
+import { calculateScore, formatDuration, formatPhone, isRankingConfigured, isValidBrazilianPhone, normalizePhone, sanitizePlayerName, submitGameResult } from "../ranking/ranking-service";
 
 type Phase = "ready" | "playing" | "finished";
 type PointerState = { id: number; start: number; oldAnchor: number | null; moved: boolean };
 
-const seconds = Math.round(DURATION / 1000);
-
 export function WordSearchGame() {
+  const router = useRouter();
   const [puzzle, setPuzzle] = useState<Puzzle>(() => generate());
   const [phase, setPhase] = useState<Phase>("ready");
   const [found, setFound] = useState<Set<string>>(() => new Set());
@@ -23,13 +23,19 @@ export function WordSearchGame() {
   const [feedback, setFeedback] = useState("Cada palavra revela uma conexão do ecossistema PAGE.");
   const [rankingStatus, setRankingStatus] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showRankingConfirm, setShowRankingConfirm] = useState(false);
   const [showResult, setShowResult] = useState(false);
   const [won, setWon] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const [playerName, setPlayerName] = useState("");
+  const [playerPhone, setPlayerPhone] = useState("");
+  const [finalFoundCount, setFinalFoundCount] = useState(0);
+  const [finalScore, setFinalScore] = useState(0);
   const pointer = useRef<PointerState | null>(null);
   const startedAt = useRef<number | null>(null);
   const resultSent = useRef(false);
+  const gameSessionId = useRef<string | null>(null);
+  const currentPlayer = useRef<{ nome: string; telefone: string } | null>(null);
 
   const running = phase === "playing";
 
@@ -37,16 +43,25 @@ export function WordSearchGame() {
     const finishedAt = Date.now();
     const started = startedAt.current ?? finishedAt;
     const totalTime = Math.min(DURATION, Math.max(0, finishedAt - started));
+    const score = calculateScore(count, totalTime);
+    const player = currentPlayer.current;
 
     setPhase("finished");
     setAnchor(null);
     setPreview([]);
     setWon(success);
     setShowResult(true);
+    setFinalFoundCount(count);
+    setFinalScore(score);
     setFeedback(`Rodada encerrada: ${count} de ${puzzle.words.length} palavras encontradas.`);
 
     if (resultSent.current) return;
     resultSent.current = true;
+
+    if (!player) {
+      setRankingStatus("Não foi possível identificar o participante da rodada.");
+      return;
+    }
 
     if (!isRankingConfigured()) {
       setRankingStatus("Ranking persistente não configurado.");
@@ -55,15 +70,19 @@ export function WordSearchGame() {
 
     setRankingStatus("Enviando resultado para o ranking...");
     void submitGameResult({
-      nome: playerName,
+      id: gameSessionId.current ?? crypto.randomUUID(),
+      nome: player.nome,
+      telefone: player.telefone,
       palavrasEncontradas: count,
+      totalPalavras: puzzle.words.length,
       tempoTotalMs: totalTime,
+      pontuacao: score,
       dataInicio: new Date(started).toISOString(),
       dataFinalizacao: new Date(finishedAt).toISOString(),
     }, puzzle.words.length)
-      .then(() => setRankingStatus(`Resultado enviado: ${count} palavras em ${formatDuration(totalTime)}.`))
+      .then(() => setRankingStatus(`Resultado enviado: ${count} palavras em ${formatDuration(totalTime)} · ${score.toLocaleString("pt-BR")} pts.`))
       .catch(() => setRankingStatus("Não foi possível enviar o resultado para o ranking."));
-  }, [found.size, playerName, puzzle.words.length]);
+  }, [found.size, puzzle.words.length]);
 
   useEffect(() => {
     if (!running) return;
@@ -93,18 +112,39 @@ export function WordSearchGame() {
     setRankingStatus("");
     setWon(false);
     setShowResult(false);
+    setShowRankingConfirm(false);
     setReviewing(false);
+    setPlayerName("");
+    setPlayerPhone("");
+    setFinalFoundCount(0);
+    setFinalScore(0);
     startedAt.current = null;
     resultSent.current = false;
+    gameSessionId.current = null;
+    currentPlayer.current = null;
   }
 
   function start() {
     if (phase !== "ready") return;
-    if (!sanitizePlayerName(playerName)) {
+    const nome = sanitizePlayerName(playerName);
+    const telefone = normalizePhone(playerPhone);
+
+    if (!nome) {
       setFeedback("Informe o nome do participante antes de começar.");
       return;
     }
+
+    if (!isValidBrazilianPhone(telefone)) {
+      setFeedback("Informe um telefone brasileiro válido antes de começar.");
+      return;
+    }
+
     const now = Date.now();
+    const sessionId = crypto.randomUUID();
+    setPlayerName(nome);
+    setPlayerPhone(formatPhone(telefone));
+    currentPlayer.current = { nome, telefone };
+    gameSessionId.current = sessionId;
     startedAt.current = now;
     resultSent.current = false;
     setRound((value) => value + 1);
@@ -118,19 +158,7 @@ export function WordSearchGame() {
   function restart() {
     setShowConfirm(false);
     reset(generate());
-    if (!sanitizePlayerName(playerName)) {
-      setFeedback("Informe o nome do participante antes de começar.");
-      return;
-    }
-    const now = Date.now();
-    startedAt.current = now;
-    resultSent.current = false;
-    setRound((value) => value + 1);
-    setDeadline(now + DURATION);
-    setTimeLeft(DURATION);
-    setRankingStatus("");
-    setPhase("playing");
-    setFeedback("Nova grade iniciada. Encontre as seis palavras.");
+    setFeedback("Nova grade preparada. Informe nome e telefone para iniciar a próxima rodada.");
   }
 
   function isActive() {
@@ -166,6 +194,14 @@ export function WordSearchGame() {
     return element ? Number(element.dataset.cell) : null;
   }
 
+  function openRanking() {
+    if (running) {
+      setShowRankingConfirm(true);
+      return;
+    }
+    router.push("/ranking");
+  }
+
   function revealAnswers() {
     setShowResult(false);
     setReviewing(true);
@@ -193,7 +229,10 @@ export function WordSearchGame() {
           <span className="wordsearch-event-mark" aria-hidden="true">✳</span>
           <div>CONEXÃO ARAXÁ<span>ENCONTRE. CONECTE. DESCUBRA.</span></div>
         </div>
-        <span className="wordsearch-edition">DESAFIO PAGE / 01</span>
+        <div className="wordsearch-header-actions">
+          <button className="wordsearch-ranking-link" onClick={openRanking} type="button">Ranking <span aria-hidden="true">↗</span></button>
+          <span className="wordsearch-edition">DESAFIO PAGE / 01</span>
+        </div>
       </header>
 
       <section className="wordsearch-shell">
@@ -279,17 +318,31 @@ export function WordSearchGame() {
                 <div className="wordsearch-start-cover">
                   <div className="wordsearch-cover-icon" aria-hidden="true">P<span>↗</span></div>
                   <h2>Encontre sua<br />próxima conexão.</h2>
-                  <p>Localize as 6 palavras da lista.<br />Toque na primeira e na última letra, ou arraste entre elas.</p>
-                  <label className="wordsearch-player-name">
-                    <span>Nome do participante</span>
-                    <input
-                      maxLength={40}
-                      onChange={(event) => setPlayerName(event.target.value)}
-                      placeholder="Digite seu nome"
-                      value={playerName}
-                    />
-                  </label>
-                  <button className="wordsearch-primary" disabled={!sanitizePlayerName(playerName)} onClick={start} type="button">Começar desafio <span aria-hidden="true">↗</span></button>
+                  <p>Localize as 6 palavras da lista.<br />Informe seus dados para iniciar o cronômetro.</p>
+                  <div className="wordsearch-player-fields">
+                    <label className="wordsearch-player-name">
+                      <span>Nome do participante</span>
+                      <input
+                        autoComplete="name"
+                        maxLength={40}
+                        onChange={(event) => setPlayerName(event.target.value)}
+                        placeholder="Digite seu nome"
+                        value={playerName}
+                      />
+                    </label>
+                    <label className="wordsearch-player-name">
+                      <span>Telefone do participante</span>
+                      <input
+                        autoComplete="tel"
+                        inputMode="tel"
+                        maxLength={15}
+                        onChange={(event) => setPlayerPhone(formatPhone(event.target.value))}
+                        placeholder="(74) 99999-9999"
+                        value={playerPhone}
+                      />
+                    </label>
+                  </div>
+                  <button className="wordsearch-primary" disabled={!sanitizePlayerName(playerName) || !isValidBrazilianPhone(playerPhone)} onClick={start} type="button">Começar desafio <span aria-hidden="true">↗</span></button>
                   <span className="wordsearch-cover-foot">45 segundos para encontrar as conexões do universo PAGE.</span>
                 </div>
               )}
@@ -330,11 +383,25 @@ export function WordSearchGame() {
         <div className="wordsearch-modal" role="dialog" aria-modal="true" aria-labelledby="restart-title">
           <div className="wordsearch-modal-card">
             <p>NOVA GRADE</p>
-            <h2 id="restart-title">Reiniciar a rodada?</h2>
-            <span>A grade atual será trocada, o placar volta para zero e o tempo recomeça em {seconds} segundos.</span>
+            <h2 id="restart-title">Preparar nova rodada?</h2>
+            <span>A grade atual será trocada, o placar volta para zero e será necessário informar nome e telefone novamente.</span>
             <div>
               <button className="wordsearch-secondary" onClick={() => setShowConfirm(false)} type="button">Cancelar</button>
-              <button className="wordsearch-primary" onClick={restart} type="button">Reiniciar <span aria-hidden="true">↗</span></button>
+              <button className="wordsearch-primary" onClick={restart} type="button">Nova rodada <span aria-hidden="true">↗</span></button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showRankingConfirm && (
+        <div className="wordsearch-modal" role="dialog" aria-modal="true" aria-labelledby="ranking-exit-title">
+          <div className="wordsearch-modal-card">
+            <p>RANKING</p>
+            <h2 id="ranking-exit-title">Sair da rodada?</h2>
+            <span>Uma partida está em andamento. Deseja sair e acessar o ranking?</span>
+            <div>
+              <button className="wordsearch-secondary" onClick={() => setShowRankingConfirm(false)} type="button">Cancelar</button>
+              <button className="wordsearch-primary" onClick={() => router.push("/ranking")} type="button">Ir para Ranking <span aria-hidden="true">↗</span></button>
             </div>
           </div>
         </div>
@@ -346,7 +413,8 @@ export function WordSearchGame() {
             <p>CONEXÃO ARAXÁ × GRUPO PAGE</p>
             <h2 id="result-title">{won ? "Conexão completa!" : "Tempo encerrado!"}</h2>
             <span>{won ? "Você encontrou todo o universo PAGE." : "Cada descoberta conta. Que tal mais uma rodada?"}</span>
-            <strong className="wordsearch-result-count">{found.size}<small>de {puzzle.words.length} palavras<br />encontradas</small></strong>
+            <strong className="wordsearch-result-count">{finalFoundCount}<small>de {puzzle.words.length} palavras<br />encontradas</small></strong>
+            <span className="wordsearch-result-score">{finalScore.toLocaleString("pt-BR")} pts</span>
             {rankingStatus && <span className="wordsearch-ranking-status">{rankingStatus}</span>}
             <div>
               <button className="wordsearch-primary" onClick={() => { setShowResult(false); setShowConfirm(true); }} type="button">Nova grade <span aria-hidden="true">↗</span></button>

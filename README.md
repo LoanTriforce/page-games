@@ -33,7 +33,9 @@ NEXT_PUBLIC_WORD_SEARCH_RANKING_TABLE=word_search_rankings
 
 Em produção, adicione as mesmas variáveis em Settings > Secrets and variables > Actions > Variables no GitHub.
 
-O jogo envia automaticamente o resultado ao finalizar a rodada. A tela `/ranking` consulta o Supabase a cada 3 segundos, já ordenada por mais palavras encontradas, menor tempo e finalização mais antiga.
+O jogo solicita nome e telefone antes de cada rodada, inicia o cronômetro apenas depois desses dados válidos e envia automaticamente o resultado ao finalizar. A tela `/ranking` consulta o Supabase a cada 3 segundos, já ordenada por pontuação, mais palavras encontradas, menor tempo e finalização mais antiga.
+
+A pontuação é calculada no código e validada no banco com a fórmula `palavras_encontradas * 100000 - tempo_total_ms`, limitada ao mínimo de zero.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

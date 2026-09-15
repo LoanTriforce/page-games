@@ -110,7 +110,8 @@ export function formatWordCount(wordsFound: number) {
 }
 
 export function formatRankingResult(wordsFound: number, elapsedMs: number) {
-  return `${formatWordCount(wordsFound)} em ${formatRankingDuration(elapsedMs)}`;
+  const safeWords = Math.max(0, Math.round(wordsFound));
+  return `${formatWordCount(safeWords)} ${safeWords === 1 ? "encontrada" : "encontradas"} em ${formatRankingDuration(elapsedMs)}`;
 }
 
 export function calculateScore(wordsFound: number, elapsedMs: number) {

@@ -1,6 +1,6 @@
 const nextConfig = {
   output: "export",
-  basePath: "/page-games",
+  basePath: process.env.NODE_ENV === "production" ? "/page-games" : "",
   trailingSlash: true,
 
   images: {

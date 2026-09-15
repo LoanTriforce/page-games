@@ -9,6 +9,7 @@ export default function Home() {
       <section className="game-picker" aria-labelledby="games-title">
         <h1 id="games-title">Escolha o minigame</h1>
         <div className="games-grid">
+          <Link href="/minigames/encontre-o-ingresso" className="game-card"><svg className="game-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M7 20h34v20H7zM11 20l5-12h16l5 12M16 29h16M20 35h8"/></svg><span className="game-name">Encontre o ingresso</span><span className="game-arrow" aria-hidden="true">↗</span></Link>
           {games.map((game) => (
             <Link key={game.slug} href={`/minigames/${game.slug}`} className="game-card">
               <svg className="game-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

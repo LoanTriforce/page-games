@@ -87,16 +87,4 @@ create policy "bubbles_rankings_public_insert"
     )
   );
 
-create or replace function public.clear_bubbles_rankings()
-returns void
-language sql
-security definer
-set search_path = public
-as $$
-  delete from public.bubbles_rankings;
-$$;
-
-revoke all on function public.clear_bubbles_rankings() from public;
-grant execute on function public.clear_bubbles_rankings() to anon;
-
 grant select, insert on public.bubbles_rankings to anon;

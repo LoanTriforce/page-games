@@ -5,7 +5,7 @@ import "../bolinhas-style.css";
 
 export const metadata = {
   title: "Ranking Bolinhas Page | Page Games",
-  description: "Ranking local do jogo Bolinhas Page para eventos do Grupo Page.",
+  description: "Ranking global do jogo Bolinhas Page para eventos do Grupo Page.",
 };
 
 export default function BubblesRankingPage() {

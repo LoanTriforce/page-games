@@ -7,7 +7,6 @@ import {
   BUBBLES_RANKING_POLL_INTERVAL_MS,
   BUBBLES_ROUND_DURATION_MS,
   calculateBubblesScore,
-  clearBubblesRanking,
   downloadBubblesRankingSpreadsheet,
   formatBubblesDuration,
   formatBubblesResult,
@@ -17,7 +16,6 @@ import {
   isValidBubblesPhone,
   loadBubblesPlayer,
   loadBubblesRanking,
-  normalizeBubblesPhone,
   saveBubblesPlayer,
   saveBubblesResult,
   sanitizeBubblesName,
@@ -32,8 +30,6 @@ type Bubble = {
   product: ProductName;
   x: number;
   y: number;
-  vx: number;
-  vy: number;
   size: number;
   color: string;
 };
@@ -55,8 +51,6 @@ function makeBubble(index: number): Bubble {
     product: BUBBLES_PRODUCTS[index % BUBBLES_PRODUCTS.length],
     x: 12 + Math.random() * 76,
     y: 14 + Math.random() * 72,
-    vx: (Math.random() > 0.5 ? 1 : -1) * (7 + Math.random() * 8),
-    vy: (Math.random() > 0.5 ? 1 : -1) * (6 + Math.random() * 9),
     size: 118 + Math.round(Math.random() * 28),
     color: BUBBLE_COLORS[index % BUBBLE_COLORS.length],
   };
@@ -73,8 +67,6 @@ function repositionBubble(bubble: Bubble): Bubble {
     product: BUBBLES_PRODUCTS[Math.floor(Math.random() * BUBBLES_PRODUCTS.length)],
     x: 12 + Math.random() * 76,
     y: 14 + Math.random() * 72,
-    vx: (Math.random() > 0.5 ? 1 : -1) * (8 + Math.random() * 10),
-    vy: (Math.random() > 0.5 ? 1 : -1) * (7 + Math.random() * 10),
     color: BUBBLE_COLORS[Math.floor(Math.random() * BUBBLE_COLORS.length)],
   };
 }
@@ -192,34 +184,11 @@ export function BubblesGame() {
     if (phase !== "playing") return;
 
     let frame = 0;
-    let previous = performance.now();
-
     const tick = (now: number) => {
       currentTimeRef.current = now;
       const remaining = Math.max(0, BUBBLES_ROUND_DURATION_MS - (now - startTimeRef.current));
-      const deltaSeconds = Math.min(0.05, (now - previous) / 1000);
-      previous = now;
 
       setRemainingMs(remaining);
-      setBubbles((current) => current.map((bubble) => {
-        let nextX = bubble.x + bubble.vx * deltaSeconds;
-        let nextY = bubble.y + bubble.vy * deltaSeconds;
-        let nextVx = bubble.vx;
-        let nextVy = bubble.vy;
-        const radius = Math.max(7, Math.min(12, bubble.size / 12));
-
-        if (nextX < radius || nextX > 100 - radius) {
-          nextX = Math.min(100 - radius, Math.max(radius, nextX));
-          nextVx = -nextVx;
-        }
-        if (nextY < radius || nextY > 100 - radius) {
-          nextY = Math.min(100 - radius, Math.max(radius, nextY));
-          nextVy = -nextVy;
-        }
-
-        return { ...bubble, x: nextX, y: nextY, vx: nextVx, vy: nextVy };
-      }));
-
       if (remaining <= 0) {
         finishRound();
         return;
@@ -234,14 +203,14 @@ export function BubblesGame() {
 
   function startGame() {
     const cleanName = sanitizeBubblesName(name);
-    const cleanPhone = normalizeBubblesPhone(phone);
+    const cleanPhone = phone.trim();
 
     if (!cleanName) {
       setError("Informe o nome do participante.");
       return;
     }
     if (!isValidBubblesPhone(cleanPhone)) {
-      setError("Informe um telefone brasileiro válido.");
+      setError("Informe um telefone com DDD contendo apenas números, com 10 ou 11 dígitos. Ex: 34999999999.");
       return;
     }
 
@@ -294,19 +263,6 @@ export function BubblesGame() {
     setBubbles((current) => current.map((bubble) => bubble.id === bubbleId ? repositionBubble(bubble) : bubble));
   }
 
-  async function handleClearRanking() {
-    const confirmed = window.confirm("Tem certeza que deseja apagar todo o ranking de Bolinhas Page? Esta ação não poderá ser desfeita.");
-    if (!confirmed) return;
-
-    try {
-      await clearBubblesRanking();
-      setRanking([]);
-      setMessage("Ranking limpo com sucesso.");
-    } catch {
-      setMessage("Não foi possível limpar o ranking geral agora.");
-    }
-  }
-
   function handleExportRanking() {
     if (ranking.length === 0) {
       setMessage("Não existem participantes para exportar.");
@@ -346,7 +302,7 @@ export function BubblesGame() {
             <p>Nome e telefone são solicitados antes de cada rodada para registrar o ranking geral do evento.</p>
           </div>
           <label>Nome do participante<input value={name} onChange={(event) => setName(event.target.value)} maxLength={40} autoComplete="name" /></label>
-          <label>Telefone<input value={phone} onChange={(event) => setPhone(event.target.value)} inputMode="tel" maxLength={16} autoComplete="tel" /></label>
+          <label>Telefone<input value={phone} onChange={(event) => setPhone(event.target.value)} inputMode="numeric" maxLength={11} autoComplete="tel" pattern="[0-9]*" placeholder="Telefone com DDD. Ex: 34999999999" /></label>
           {error && <p className="bubbles-error" role="alert">{error}</p>}
           <button className="bubbles-primary" onClick={startGame} type="button">Iniciar jogo</button>
         </div>
@@ -356,7 +312,6 @@ export function BubblesGame() {
         <button className="bubbles-secondary" onClick={prepareNewRound} type="button">Nova rodada</button>
         <Link className="bubbles-secondary" href="/minigames/bolinhas-page/ranking">Ver ranking</Link>
         <button className="bubbles-secondary" onClick={handleExportRanking} type="button">Exportar Excel</button>
-        <button className="bubbles-danger" onClick={handleClearRanking} type="button">Limpar ranking</button>
       </div>
 
       {message && <p className="bubbles-message" role="status">{message}</p>}
@@ -403,3 +358,4 @@ export function BubblesGame() {
     </section>
   );
 }
+

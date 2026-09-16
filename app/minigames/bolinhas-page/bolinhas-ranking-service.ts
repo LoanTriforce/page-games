@@ -88,8 +88,7 @@ export function normalizeBubblesPhone(phone: string) {
 }
 
 export function isValidBubblesPhone(phone: string) {
-  const normalized = normalizeBubblesPhone(phone);
-  return /^[1-9]{2}(?:9\d{8}|[2-9]\d{7})$/.test(normalized);
+  return /^\d{10,11}$/.test(phone) && /^[1-9]{2}/.test(phone);
 }
 
 export function formatBubblesDuration(ms: number) {
@@ -209,21 +208,6 @@ export async function saveBubblesResult(input: {
 
   const entries = await loadBubblesRanking();
   return { entries, position: entries.findIndex((entry) => entry.id === id) + 1, saved: response.ok };
-}
-
-export async function clearBubblesRanking() {
-  const config = getSupabaseConfig();
-  const response = await fetch(`${config.supabaseUrl}/rest/v1/rpc/clear_bubbles_rankings`, {
-    method: "POST",
-    headers: {
-      ...getSupabaseHeaders(),
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: "{}",
-  });
-
-  if (!response.ok) throw new Error("Não foi possível limpar o ranking geral.");
 }
 
 export function saveBubblesPlayer(name: string, phone: string) {

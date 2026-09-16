@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   BUBBLES_RANKING_POLL_INTERVAL_MS,
-  clearBubblesRanking,
   downloadBubblesRankingSpreadsheet,
   formatBubblesDate,
   formatBubblesDuration,
@@ -50,19 +49,6 @@ export function BubblesRankingBoard() {
     };
   }, []);
 
-  async function handleClearRanking() {
-    const confirmed = window.confirm("Tem certeza que deseja apagar todo o ranking de Bolinhas Page? Esta ação não poderá ser desfeita.");
-    if (!confirmed) return;
-
-    try {
-      await clearBubblesRanking();
-      setEntries([]);
-      setMessage("Ranking limpo com sucesso.");
-    } catch {
-      setMessage("Não foi possível limpar o ranking geral agora.");
-    }
-  }
-
   function handleExportRanking() {
     if (entries.length === 0) {
       setMessage("Não existem participantes para exportar.");
@@ -84,7 +70,6 @@ export function BubblesRankingBoard() {
       <div className="bubbles-ranking-actions" aria-label="Ações do ranking">
         <Link className="bubbles-secondary" href="/minigames/bolinhas-page">Voltar para o jogo</Link>
         <button className="bubbles-secondary" onClick={handleExportRanking} type="button">Exportar Excel</button>
-        <button className="bubbles-danger" onClick={handleClearRanking} type="button">Limpar ranking</button>
       </div>
 
       {message && <p className="bubbles-message" role="status">{message}</p>}

@@ -9,7 +9,6 @@ import {
   calculateBubblesScore,
   downloadBubblesRankingSpreadsheet,
   formatBubblesDuration,
-  formatBubblesResult,
   getAverageClickMs,
   getBubblesElapsedMs,
   isBubblesRankingConfigured,
@@ -43,7 +42,6 @@ type RoundResult = {
 };
 
 const BUBBLE_COLORS = ["#caff35", "#8b7fe8", "#ffb84d", "#50e3c2", "#ff77b7", "#73a7ff"];
-const INITIAL_BUBBLES = 8;
 
 function makeBubble(index: number): Bubble {
   return {
@@ -54,10 +52,6 @@ function makeBubble(index: number): Bubble {
     size: 118 + Math.round(Math.random() * 28),
     color: BUBBLE_COLORS[index % BUBBLE_COLORS.length],
   };
-}
-
-function makeBubbles() {
-  return Array.from({ length: INITIAL_BUBBLES }, (_, index) => makeBubble(index));
 }
 
 function repositionBubble(bubble: Bubble): Bubble {
@@ -78,10 +72,6 @@ function formatTimer(ms: number) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-function rankingPreview(entries: BubblesRankingEntry[]) {
-  return entries.slice(0, 5);
-}
-
 export function BubblesGame() {
   const [phase, setPhase] = useState<GamePhase>("idle");
   const [name, setName] = useState("");
@@ -92,7 +82,7 @@ export function BubblesGame() {
   const [rankingStatus, setRankingStatus] = useState<"loading" | "ready" | "error" | "unconfigured">(
     isBubblesRankingConfigured() ? "loading" : "unconfigured",
   );
-  const [bubbles, setBubbles] = useState<Bubble[]>(() => makeBubbles());
+  const [bubble, setBubble] = useState<Bubble>(() => makeBubble(0));
   const [remainingMs, setRemainingMs] = useState(BUBBLES_ROUND_DURATION_MS);
   const [clickDetails, setClickDetails] = useState<BubbleClickDetail[]>([]);
   const [result, setResult] = useState<RoundResult | null>(null);
@@ -227,7 +217,7 @@ export function BubblesGame() {
     currentTimeRef.current = startTimeRef.current;
     phaseRef.current = "playing";
     setRemainingMs(BUBBLES_ROUND_DURATION_MS);
-    setBubbles(makeBubbles());
+    setBubble(makeBubble(0));
     setPhase("playing");
   }
 
@@ -240,11 +230,11 @@ export function BubblesGame() {
     setMessage("");
     setError("");
     setRemainingMs(BUBBLES_ROUND_DURATION_MS);
-    setBubbles(makeBubbles());
+    setBubble(makeBubble(0));
     setPhase("idle");
   }
 
-  function clickBubble(bubbleId: string) {
+  function clickBubble() {
     if (phaseRef.current !== "playing") return;
 
     const clickedAtMs = Math.min(BUBBLES_ROUND_DURATION_MS, Math.max(0, currentTimeRef.current - startTimeRef.current));
@@ -253,14 +243,11 @@ export function BubblesGame() {
       return;
     }
 
-    const targetBubble = bubbles.find((bubble) => bubble.id === bubbleId);
-    if (!targetBubble) return;
-
-    const nextDetail = { product: targetBubble.product, clickedAtMs: Math.round(clickedAtMs) };
+    const nextDetail = { product: bubble.product, clickedAtMs: Math.round(clickedAtMs) };
     const nextDetails = [...clickDetailsRef.current, nextDetail];
     clickDetailsRef.current = nextDetails;
     setClickDetails(nextDetails);
-    setBubbles((current) => current.map((bubble) => bubble.id === bubbleId ? repositionBubble(bubble) : bubble));
+    setBubble((current) => repositionBubble(current));
   }
 
   function handleExportRanking() {
@@ -320,24 +307,22 @@ export function BubblesGame() {
 
       <div className="bubbles-arena" aria-label="Área do jogo com bolinhas pulando">
         <div className="bubbles-arena-grid" aria-hidden="true" />
-        {bubbles.map((bubble) => (
-          <button
-            aria-label={`Clicar em ${bubble.product}`}
-            className="bubbles-ball"
-            disabled={phase !== "playing"}
-            key={bubble.id}
-            onClick={() => clickBubble(bubble.id)}
-            style={{
-              "--bubble-color": bubble.color,
-              "--bubble-size": `${bubble.size}px`,
-              left: `${bubble.x}%`,
-              top: `${bubble.y}%`,
-            } as CSSProperties}
-            type="button"
-          >
-            <span>{bubble.product}</span>
-          </button>
-        ))}
+        <button
+          aria-label={`Clicar em ${bubble.product}`}
+          className="bubbles-ball"
+          disabled={phase !== "playing"}
+          key={bubble.id}
+          onClick={clickBubble}
+          style={{
+            "--bubble-color": bubble.color,
+            "--bubble-size": `${bubble.size}px`,
+            left: `${bubble.x}%`,
+            top: `${bubble.y}%`,
+          } as CSSProperties}
+          type="button"
+        >
+          <span>{bubble.product}</span>
+        </button>
         {phase !== "playing" && <div className="bubbles-arena-cover">Clique em <strong>Iniciar jogo</strong> para liberar as bolinhas.</div>}
       </div>
 
@@ -350,11 +335,6 @@ export function BubblesGame() {
           {result.saved ? <small>{result.position}º lugar no ranking geral</small> : <small>Faça pelo menos um clique para registrar no ranking.</small>}
         </section>
       )}
-
-      <aside className="bubbles-ranking-preview" aria-labelledby="bubbles-preview-title">
-        <div><h2 id="bubbles-preview-title">Top ranking</h2><Link href="/minigames/bolinhas-page/ranking">Abrir ranking completo ↗</Link></div>
-        {ranking.length ? <ol>{rankingPreview(ranking).map((entry, index) => <li key={entry.id}><span>{index + 1}º</span><strong>{formatBubblesResult(entry)}</strong><em>{entry.score.toLocaleString("pt-BR")} pts</em></li>)}</ol> : <p>Os resultados gerais aparecem aqui após a primeira rodada com acertos.</p>}
-      </aside>
     </section>
   );
 }

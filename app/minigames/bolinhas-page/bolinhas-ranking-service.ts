@@ -22,12 +22,20 @@ type WorkbookFile = {
   content: string;
 };
 
+type SaveBubblesResultResponse = {
+  entries: BubblesRankingEntry[];
+  position: number;
+  saved: boolean;
+};
+
 export const BUBBLES_PRODUCTS: ProductName[] = ["Page Eventos", "Page Serviços", "Page Move", "Page City"];
 export const BUBBLES_ROUND_DURATION_MS = 60_000;
-export const BUBBLES_RANKING_STORAGE_KEY = "page_bolinhas_ranking";
 export const BUBBLES_PLAYER_STORAGE_KEY = "page_bolinhas_player";
+export const BUBBLES_RANKING_POLL_INTERVAL_MS = 3_000;
 
-const MAX_RANKING_ENTRIES = 250;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim().replace(/\/$/, "");
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+const bubblesRankingTable = process.env.NEXT_PUBLIC_BUBBLES_RANKING_TABLE?.trim() || "bubbles_rankings";
 const CRC32_TABLE = Array.from({ length: 256 }, (_, index) => {
   let value = index;
 
@@ -37,6 +45,37 @@ const CRC32_TABLE = Array.from({ length: 256 }, (_, index) => {
 
   return value >>> 0;
 });
+
+export function isBubblesRankingConfigured() {
+  return Boolean(supabaseUrl && supabaseAnonKey);
+}
+
+function getSupabaseConfig() {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error("Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY para ativar o ranking geral.");
+  }
+
+  return { supabaseUrl, supabaseAnonKey, bubblesRankingTable };
+}
+
+function getBubblesRankingEndpoint() {
+  const config = getSupabaseConfig();
+  const params = new URLSearchParams({
+    select: "id,name:nome,phone:telefone,bubblesClicked:bolinhas_clicadas,elapsedMs:tempo_total_ms,averageClickMs:tempo_medio_ms,score:pontuacao,clickDetails:detalhes_cliques,createdAt:criado_em",
+    order: "bolinhas_clicadas.desc,tempo_total_ms.asc,pontuacao.desc,criado_em.asc",
+  });
+
+  return `${config.supabaseUrl}/rest/v1/${config.bubblesRankingTable}?${params}`;
+}
+
+function getSupabaseHeaders() {
+  const config = getSupabaseConfig();
+
+  return {
+    apikey: config.supabaseAnonKey,
+    Authorization: `Bearer ${config.supabaseAnonKey}`,
+  };
+}
 
 export function sanitizeBubblesName(name: string) {
   return name.trim().replace(/\s+/g, " ").slice(0, 40);
@@ -110,55 +149,81 @@ export function sortBubblesRanking(entries: BubblesRankingEntry[]) {
   });
 }
 
-export function loadBubblesRanking() {
-  if (typeof window === "undefined") return [];
+export async function loadBubblesRanking() {
+  const response = await fetch(getBubblesRankingEndpoint(), {
+    headers: {
+      ...getSupabaseHeaders(),
+      Accept: "application/json",
+    },
+    cache: "no-store",
+  });
 
-  try {
-    const rawRanking = window.localStorage.getItem(BUBBLES_RANKING_STORAGE_KEY);
-    const parsed = rawRanking ? JSON.parse(rawRanking) : [];
-    if (!Array.isArray(parsed)) return [];
-
-    return sortBubblesRanking(parsed.map(normalizeBubblesEntry).filter((entry): entry is BubblesRankingEntry => entry !== null));
-  } catch {
-    return [];
-  }
+  if (!response.ok) throw new Error("Não foi possível carregar o ranking geral de Bolinhas Page.");
+  return normalizeBubblesPayload(await response.json());
 }
 
-export function saveBubblesResult(input: {
+export async function saveBubblesResult(input: {
   id: string;
   name: string;
   phone: string;
   clickDetails: BubbleClickDetail[];
   createdAt: string;
-}) {
+}): Promise<SaveBubblesResultResponse> {
+  const id = input.id.trim() || crypto.randomUUID();
   const name = sanitizeBubblesName(input.name);
   const phone = normalizeBubblesPhone(input.phone);
   const clickDetails = normalizeClickDetails(input.clickDetails);
   const clickTimes = clickDetails.map((detail) => detail.clickedAtMs);
+  const bubblesClicked = clickDetails.length;
+  const elapsedMs = getBubblesElapsedMs(clickTimes);
+  const averageClickMs = getAverageClickMs(clickTimes);
+  const score = calculateBubblesScore(clickTimes);
 
   if (!name) throw new Error("Informe o nome do participante antes de iniciar.");
   if (!isValidBubblesPhone(phone)) throw new Error("Informe um telefone brasileiro válido.");
-  if (clickDetails.length === 0) return { entries: loadBubblesRanking(), position: 0, saved: false };
+  if (bubblesClicked === 0) return { entries: await loadBubblesRanking(), position: 0, saved: false };
 
-  const entry: BubblesRankingEntry = {
-    id: input.id.trim() || crypto.randomUUID(),
-    name,
-    phone,
-    bubblesClicked: clickDetails.length,
-    elapsedMs: getBubblesElapsedMs(clickTimes),
-    averageClickMs: getAverageClickMs(clickTimes),
-    score: calculateBubblesScore(clickTimes),
-    clickDetails,
-    createdAt: input.createdAt,
-  };
-  const entries = sortBubblesRanking([entry, ...loadBubblesRanking()]).slice(0, MAX_RANKING_ENTRIES);
+  const config = getSupabaseConfig();
+  const response = await fetch(`${config.supabaseUrl}/rest/v1/${config.bubblesRankingTable}`, {
+    method: "POST",
+    headers: {
+      ...getSupabaseHeaders(),
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify({
+      id,
+      nome: name,
+      telefone: phone,
+      bolinhas_clicadas: bubblesClicked,
+      tempo_total_ms: elapsedMs,
+      tempo_medio_ms: averageClickMs,
+      pontuacao: score,
+      detalhes_cliques: clickDetails,
+      criado_em: input.createdAt,
+    }),
+  });
 
-  window.localStorage.setItem(BUBBLES_RANKING_STORAGE_KEY, JSON.stringify(entries));
-  return { entries, position: entries.findIndex((rankingEntry) => rankingEntry.id === entry.id) + 1, saved: true };
+  if (!response.ok && response.status !== 409) throw new Error("Não foi possível salvar o resultado no ranking geral.");
+
+  const entries = await loadBubblesRanking();
+  return { entries, position: entries.findIndex((entry) => entry.id === id) + 1, saved: response.ok };
 }
 
-export function clearBubblesRanking() {
-  window.localStorage.removeItem(BUBBLES_RANKING_STORAGE_KEY);
+export async function clearBubblesRanking() {
+  const config = getSupabaseConfig();
+  const response = await fetch(`${config.supabaseUrl}/rest/v1/rpc/clear_bubbles_rankings`, {
+    method: "POST",
+    headers: {
+      ...getSupabaseHeaders(),
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: "{}",
+  });
+
+  if (!response.ok) throw new Error("Não foi possível limpar o ranking geral.");
 }
 
 export function saveBubblesPlayer(name: string, phone: string) {
@@ -202,18 +267,38 @@ export function downloadBubblesRankingSpreadsheet(entries: BubblesRankingEntry[]
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
+function normalizeBubblesPayload(payload: unknown) {
+  const list = Array.isArray(payload)
+    ? payload
+    : payload && typeof payload === "object" && Array.isArray((payload as { results?: unknown[] }).results)
+      ? (payload as { results: unknown[] }).results
+      : [];
+
+  return sortBubblesRanking(list.map(normalizeBubblesEntry).filter((entry): entry is BubblesRankingEntry => entry !== null));
+}
+
 function normalizeBubblesEntry(value: unknown): BubblesRankingEntry | null {
   if (!value || typeof value !== "object") return null;
 
-  const item = value as Partial<BubblesRankingEntry>;
-  const name = typeof item.name === "string" ? sanitizeBubblesName(item.name) : "";
-  const phone = typeof item.phone === "string" ? item.phone : "";
-  const bubblesClicked = Number(item.bubblesClicked);
-  const elapsedMs = Number(item.elapsedMs);
-  const averageClickMs = Number(item.averageClickMs);
-  const score = Number(item.score);
-  const clickDetails = normalizeClickDetails(Array.isArray(item.clickDetails) ? item.clickDetails : []);
-  const createdAt = typeof item.createdAt === "string" ? item.createdAt : "";
+  const item = value as Partial<BubblesRankingEntry> & {
+    nome?: unknown;
+    telefone?: unknown;
+    bolinhas_clicadas?: unknown;
+    tempo_total_ms?: unknown;
+    tempo_medio_ms?: unknown;
+    pontuacao?: unknown;
+    detalhes_cliques?: unknown;
+    criado_em?: unknown;
+  };
+  const name = typeof item.name === "string" ? sanitizeBubblesName(item.name) : typeof item.nome === "string" ? sanitizeBubblesName(item.nome) : "";
+  const phone = typeof item.phone === "string" ? item.phone : typeof item.telefone === "string" ? item.telefone : "";
+  const bubblesClicked = Number(item.bubblesClicked ?? item.bolinhas_clicadas);
+  const elapsedMs = Number(item.elapsedMs ?? item.tempo_total_ms);
+  const averageClickMs = Number(item.averageClickMs ?? item.tempo_medio_ms);
+  const score = Number(item.score ?? item.pontuacao);
+  const rawDetails = Array.isArray(item.clickDetails) ? item.clickDetails : Array.isArray(item.detalhes_cliques) ? item.detalhes_cliques : [];
+  const clickDetails = normalizeClickDetails(rawDetails);
+  const createdAt = typeof item.createdAt === "string" ? item.createdAt : typeof item.criado_em === "string" ? item.criado_em : "";
   const id = typeof item.id === "string" && item.id.trim() ? item.id : `${name}-${createdAt}-${bubblesClicked}`;
 
   if (!id || !name || !Number.isFinite(bubblesClicked) || !Number.isFinite(elapsedMs) || !Number.isFinite(averageClickMs) || !Number.isFinite(score) || !createdAt) return null;
@@ -235,9 +320,10 @@ function normalizeBubblesEntry(value: unknown): BubblesRankingEntry | null {
 function normalizeClickDetails(details: unknown[]) {
   return details
     .map((detail) => {
-      const item = detail as Partial<BubbleClickDetail>;
-      const product = BUBBLES_PRODUCTS.includes(item.product as ProductName) ? item.product as ProductName : null;
-      const clickedAtMs = Math.max(0, Math.min(BUBBLES_ROUND_DURATION_MS, Math.round(Number(item.clickedAtMs))));
+      const item = detail as Partial<BubbleClickDetail> & { product?: unknown; clickedAtMs?: unknown; produto?: unknown; clicked_at_ms?: unknown };
+      const rawProduct = item.product ?? item.produto;
+      const product = BUBBLES_PRODUCTS.includes(rawProduct as ProductName) ? rawProduct as ProductName : null;
+      const clickedAtMs = Math.max(0, Math.min(BUBBLES_ROUND_DURATION_MS, Math.round(Number(item.clickedAtMs ?? item.clicked_at_ms))));
 
       return product && Number.isFinite(clickedAtMs) ? { product, clickedAtMs } : null;
     })

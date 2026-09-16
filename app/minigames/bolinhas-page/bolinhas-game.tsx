@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   BUBBLES_PRODUCTS,
+  BUBBLES_RANKING_POLL_INTERVAL_MS,
   BUBBLES_ROUND_DURATION_MS,
   calculateBubblesScore,
   clearBubblesRanking,
@@ -12,6 +13,7 @@ import {
   formatBubblesResult,
   getAverageClickMs,
   getBubblesElapsedMs,
+  isBubblesRankingConfigured,
   isValidBubblesPhone,
   loadBubblesPlayer,
   loadBubblesRanking,
@@ -95,6 +97,9 @@ export function BubblesGame() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [ranking, setRanking] = useState<BubblesRankingEntry[]>([]);
+  const [rankingStatus, setRankingStatus] = useState<"loading" | "ready" | "error" | "unconfigured">(
+    isBubblesRankingConfigured() ? "loading" : "unconfigured",
+  );
   const [bubbles, setBubbles] = useState<Bubble[]>(() => makeBubbles());
   const [remainingMs, setRemainingMs] = useState(BUBBLES_ROUND_DURATION_MS);
   const [clickDetails, setClickDetails] = useState<BubbleClickDetail[]>([]);
@@ -108,18 +113,41 @@ export function BubblesGame() {
   const clickTimes = useMemo(() => clickDetails.map((detail) => detail.clickedAtMs), [clickDetails]);
   const score = calculateBubblesScore(clickTimes);
   const elapsedMs = getBubblesElapsedMs(clickTimes);
+  const refreshRanking = useCallback(async () => {
+    if (!isBubblesRankingConfigured()) {
+      setRankingStatus("unconfigured");
+      return [];
+    }
+
+    try {
+      const nextRanking = await loadBubblesRanking();
+      setRanking(nextRanking);
+      setRankingStatus("ready");
+      return nextRanking;
+    } catch {
+      setRankingStatus("error");
+      return [];
+    }
+  }, []);
+
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
-      setRanking(loadBubblesRanking());
+      void refreshRanking();
       const savedPlayer = loadBubblesPlayer();
       setName(savedPlayer.name);
       setPhone(savedPlayer.phone);
     });
+    const interval = window.setInterval(() => {
+      void refreshRanking();
+    }, BUBBLES_RANKING_POLL_INTERVAL_MS);
 
-    return () => cancelAnimationFrame(frame);
-  }, []);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearInterval(interval);
+    };
+  }, [refreshRanking]);
 
-  const finishRound = useCallback(() => {
+  const finishRound = useCallback(async () => {
     if (finishedRef.current) return;
     finishedRef.current = true;
     phaseRef.current = "finished";
@@ -138,20 +166,26 @@ export function BubblesGame() {
     };
 
     if (details.length > 0) {
-      const saved = saveBubblesResult({
-        id: crypto.randomUUID(),
-        name,
-        phone,
-        clickDetails: details,
-        createdAt: new Date().toISOString(),
-      });
-      setRanking(saved.entries);
-      finalResult.saved = saved.saved;
-      finalResult.position = saved.position;
+      try {
+        const saved = await saveBubblesResult({
+          id: crypto.randomUUID(),
+          name,
+          phone,
+          clickDetails: details,
+          createdAt: new Date().toISOString(),
+        });
+        setRanking(saved.entries);
+        setRankingStatus("ready");
+        finalResult.saved = saved.saved;
+        finalResult.position = saved.position;
+      } catch {
+        setRankingStatus("error");
+        setMessage("Rodada finalizada, mas não foi possível salvar no ranking geral.");
+      }
     }
 
     setResult(finalResult);
-    setMessage(details.length > 0 ? "Resultado salvo no ranking." : "Nenhuma bolinha clicada. Resultado não entrou no ranking.");
+    setMessage((currentMessage) => currentMessage || (details.length > 0 ? "Resultado salvo no ranking geral." : "Nenhuma bolinha clicada. Resultado não entrou no ranking."));
   }, [name, phone]);
 
   useEffect(() => {
@@ -260,13 +294,17 @@ export function BubblesGame() {
     setBubbles((current) => current.map((bubble) => bubble.id === bubbleId ? repositionBubble(bubble) : bubble));
   }
 
-  function handleClearRanking() {
+  async function handleClearRanking() {
     const confirmed = window.confirm("Tem certeza que deseja apagar todo o ranking de Bolinhas Page? Esta ação não poderá ser desfeita.");
     if (!confirmed) return;
 
-    clearBubblesRanking();
-    setRanking([]);
-    setMessage("Ranking limpo com sucesso.");
+    try {
+      await clearBubblesRanking();
+      setRanking([]);
+      setMessage("Ranking limpo com sucesso.");
+    } catch {
+      setMessage("Não foi possível limpar o ranking geral agora.");
+    }
   }
 
   function handleExportRanking() {
@@ -305,7 +343,7 @@ export function BubblesGame() {
         <div className="bubbles-start-panel">
           <div>
             <h2>{phase === "finished" ? "Nova rodada" : "Identifique o participante"}</h2>
-            <p>Nome e telefone são solicitados antes de cada rodada para registrar o ranking deste dispositivo.</p>
+            <p>Nome e telefone são solicitados antes de cada rodada para registrar o ranking geral do evento.</p>
           </div>
           <label>Nome do participante<input value={name} onChange={(event) => setName(event.target.value)} maxLength={40} autoComplete="name" /></label>
           <label>Telefone<input value={phone} onChange={(event) => setPhone(event.target.value)} inputMode="tel" maxLength={16} autoComplete="tel" /></label>
@@ -322,6 +360,8 @@ export function BubblesGame() {
       </div>
 
       {message && <p className="bubbles-message" role="status">{message}</p>}
+      {rankingStatus === "unconfigured" && <p className="bubbles-message" role="status">Configure o Supabase para ativar o ranking geral.</p>}
+      {rankingStatus === "error" && <p className="bubbles-message" role="status">Não foi possível atualizar o ranking geral agora.</p>}
 
       <div className="bubbles-arena" aria-label="Área do jogo com bolinhas pulando">
         <div className="bubbles-arena-grid" aria-hidden="true" />
@@ -352,13 +392,13 @@ export function BubblesGame() {
           <h2>{result.bubblesClicked} {result.bubblesClicked === 1 ? "bolinha" : "bolinhas"} em {formatBubblesDuration(result.elapsedMs)}</h2>
           <strong>{result.score.toLocaleString("pt-BR")} pts</strong>
           <span>Velocidade média: {formatBubblesDuration(result.averageClickMs)} por clique</span>
-          {result.saved ? <small>{result.position}º lugar no ranking deste dispositivo</small> : <small>Faça pelo menos um clique para registrar no ranking.</small>}
+          {result.saved ? <small>{result.position}º lugar no ranking geral</small> : <small>Faça pelo menos um clique para registrar no ranking.</small>}
         </section>
       )}
 
       <aside className="bubbles-ranking-preview" aria-labelledby="bubbles-preview-title">
         <div><h2 id="bubbles-preview-title">Top ranking</h2><Link href="/minigames/bolinhas-page/ranking">Abrir ranking completo ↗</Link></div>
-        {ranking.length ? <ol>{rankingPreview(ranking).map((entry, index) => <li key={entry.id}><span>{index + 1}º</span><strong>{formatBubblesResult(entry)}</strong><em>{entry.score.toLocaleString("pt-BR")} pts</em></li>)}</ol> : <p>Os resultados aparecem aqui após a primeira rodada com acertos.</p>}
+        {ranking.length ? <ol>{rankingPreview(ranking).map((entry, index) => <li key={entry.id}><span>{index + 1}º</span><strong>{formatBubblesResult(entry)}</strong><em>{entry.score.toLocaleString("pt-BR")} pts</em></li>)}</ol> : <p>Os resultados gerais aparecem aqui após a primeira rodada com acertos.</p>}
       </aside>
     </section>
   );

@@ -5,8 +5,8 @@ create table if not exists public.bubbles_rankings (
   nome text not null check (char_length(btrim(nome)) between 1 and 40),
   telefone text not null check (telefone ~ '^[0-9]{10,11}$'),
   bolinhas_clicadas integer not null check (bolinhas_clicadas > 0),
-  tempo_total_ms integer not null check (tempo_total_ms between 0 and 60000),
-  tempo_medio_ms integer not null check (tempo_medio_ms between 0 and 60000),
+  tempo_total_ms integer not null check (tempo_total_ms between 0 and 30000),
+  tempo_medio_ms integer not null check (tempo_medio_ms between 0 and 30000),
   pontuacao integer not null check (pontuacao >= 0),
   detalhes_cliques jsonb not null default '[]'::jsonb,
   criado_em timestamptz not null default now(),
@@ -14,6 +14,12 @@ create table if not exists public.bubbles_rankings (
   constraint bubbles_rankings_details_length_check check (jsonb_array_length(detalhes_cliques) = bolinhas_clicadas),
   constraint bubbles_rankings_score_check check (
     pontuacao = greatest(
+      0,
+      bolinhas_clicadas * 100000
+      + greatest(0, 30000 - tempo_total_ms)
+      + (round((bolinhas_clicadas * 30000)::numeric / greatest(1000, tempo_total_ms))::integer * 250)
+    )
+    or pontuacao = greatest(
       0,
       bolinhas_clicadas * 100000
       + greatest(0, 60000 - tempo_total_ms)
@@ -31,6 +37,24 @@ create table if not exists public.bubbles_rankings (
   )
 );
 
+alter table public.bubbles_rankings
+  drop constraint if exists bubbles_rankings_score_check;
+
+alter table public.bubbles_rankings
+  add constraint bubbles_rankings_score_check check (
+    pontuacao = greatest(
+      0,
+      bolinhas_clicadas * 100000
+      + greatest(0, 30000 - tempo_total_ms)
+      + (round((bolinhas_clicadas * 30000)::numeric / greatest(1000, tempo_total_ms))::integer * 250)
+    )
+    or pontuacao = greatest(
+      0,
+      bolinhas_clicadas * 100000
+      + greatest(0, 60000 - tempo_total_ms)
+      + (round((bolinhas_clicadas * 60000)::numeric / greatest(1000, tempo_total_ms))::integer * 250)
+    )
+  );
 create index if not exists bubbles_rankings_order_idx
   on public.bubbles_rankings (
     bolinhas_clicadas desc,
@@ -57,13 +81,13 @@ create policy "bubbles_rankings_public_insert"
     char_length(btrim(nome)) between 1 and 40
     and telefone ~ '^[0-9]{10,11}$'
     and bolinhas_clicadas > 0
-    and tempo_total_ms between 0 and 60000
+    and tempo_total_ms between 0 and 30000
     and tempo_medio_ms = round(tempo_total_ms::numeric / bolinhas_clicadas)::integer
     and pontuacao = greatest(
       0,
       bolinhas_clicadas * 100000
-      + greatest(0, 60000 - tempo_total_ms)
-      + (round((bolinhas_clicadas * 60000)::numeric / greatest(1000, tempo_total_ms))::integer * 250)
+      + greatest(0, 30000 - tempo_total_ms)
+      + (round((bolinhas_clicadas * 30000)::numeric / greatest(1000, tempo_total_ms))::integer * 250)
     )
     and jsonb_typeof(detalhes_cliques) = 'array'
     and jsonb_array_length(detalhes_cliques) = bolinhas_clicadas
@@ -82,7 +106,7 @@ create policy "bubbles_rankings_public_insert"
         and click_detail.item ? 'clickedAtMs'
         and click_detail.item ->> 'product' in ('Page Eventos', 'Page Serviços', 'Page Move', 'Page City')
         and (click_detail.item ->> 'clickedAtMs') ~ '^[0-9]+$'
-        and (click_detail.item ->> 'clickedAtMs')::integer between 0 and 60000
+        and (click_detail.item ->> 'clickedAtMs')::integer between 0 and 30000
       )
     )
   );

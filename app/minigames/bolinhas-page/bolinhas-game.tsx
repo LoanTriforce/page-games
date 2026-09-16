@@ -43,14 +43,14 @@ type RoundResult = {
 
 const BUBBLE_COLORS = ["#caff35", "#8b7fe8", "#ffb84d", "#50e3c2", "#ff77b7", "#73a7ff"];
 
-function makeBubble(index: number): Bubble {
+function makeBubble(): Bubble {
   return {
     id: crypto.randomUUID(),
-    product: BUBBLES_PRODUCTS[index % BUBBLES_PRODUCTS.length],
-    x: 12 + Math.random() * 76,
-    y: 14 + Math.random() * 72,
-    size: 118 + Math.round(Math.random() * 28),
-    color: BUBBLE_COLORS[index % BUBBLE_COLORS.length],
+    product: BUBBLES_PRODUCTS[Math.floor(Math.random() * BUBBLES_PRODUCTS.length)],
+    x: 8 + Math.random() * 84,
+    y: 10 + Math.random() * 78,
+    size: 104 + Math.round(Math.random() * 64),
+    color: BUBBLE_COLORS[Math.floor(Math.random() * BUBBLE_COLORS.length)],
   };
 }
 
@@ -59,8 +59,9 @@ function repositionBubble(bubble: Bubble): Bubble {
     ...bubble,
     id: crypto.randomUUID(),
     product: BUBBLES_PRODUCTS[Math.floor(Math.random() * BUBBLES_PRODUCTS.length)],
-    x: 12 + Math.random() * 76,
-    y: 14 + Math.random() * 72,
+    x: 8 + Math.random() * 84,
+    y: 10 + Math.random() * 78,
+    size: 104 + Math.round(Math.random() * 64),
     color: BUBBLE_COLORS[Math.floor(Math.random() * BUBBLE_COLORS.length)],
   };
 }
@@ -82,7 +83,7 @@ export function BubblesGame() {
   const [rankingStatus, setRankingStatus] = useState<"loading" | "ready" | "error" | "unconfigured">(
     isBubblesRankingConfigured() ? "loading" : "unconfigured",
   );
-  const [bubble, setBubble] = useState<Bubble>(() => makeBubble(0));
+  const [bubble, setBubble] = useState<Bubble>(() => makeBubble());
   const [remainingMs, setRemainingMs] = useState(BUBBLES_ROUND_DURATION_MS);
   const [clickDetails, setClickDetails] = useState<BubbleClickDetail[]>([]);
   const [result, setResult] = useState<RoundResult | null>(null);
@@ -191,7 +192,7 @@ export function BubblesGame() {
     return () => cancelAnimationFrame(frame);
   }, [phase, finishRound]);
 
-  function startGame() {
+  async function startGame() {
     const cleanName = sanitizeBubblesName(name);
     const cleanPhone = phone.trim();
 
@@ -202,6 +203,10 @@ export function BubblesGame() {
     if (!isValidBubblesPhone(cleanPhone)) {
       setError("Informe um telefone com DDD contendo apenas números, com 10 ou 11 dígitos. Ex: 34999999999.");
       return;
+    }
+
+    if (!document.fullscreenElement) {
+      await document.documentElement.requestFullscreen().catch(() => undefined);
     }
 
     saveBubblesPlayer(cleanName, cleanPhone);
@@ -217,7 +222,7 @@ export function BubblesGame() {
     currentTimeRef.current = startTimeRef.current;
     phaseRef.current = "playing";
     setRemainingMs(BUBBLES_ROUND_DURATION_MS);
-    setBubble(makeBubble(0));
+    setBubble(makeBubble());
     setPhase("playing");
   }
 
@@ -230,7 +235,7 @@ export function BubblesGame() {
     setMessage("");
     setError("");
     setRemainingMs(BUBBLES_ROUND_DURATION_MS);
-    setBubble(makeBubble(0));
+    setBubble(makeBubble());
     setPhase("idle");
   }
 
@@ -266,7 +271,7 @@ export function BubblesGame() {
         <div>
           <p className="bubbles-eyebrow">Grupo Page / desafio de produtos</p>
           <h1 id="bubbles-title">Bolinhas Page</h1>
-          <p>Clique no maior número de bolinhas em 1 minuto. Quem fizer mais acertos em menos tempo fica no topo.</p>
+          <p>Clique no maior número de bolinhas em 30 segundos. Quem fizer mais acertos em menos tempo fica no topo.</p>
         </div>
         <div className="bubbles-live-card" aria-live="polite">
           <span>Tempo</span>
@@ -338,4 +343,3 @@ export function BubblesGame() {
     </section>
   );
 }
-

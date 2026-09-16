@@ -29,7 +29,7 @@ type SaveBubblesResultResponse = {
 };
 
 export const BUBBLES_PRODUCTS: ProductName[] = ["Page Eventos", "Page Serviços", "Page Move", "Page City"];
-export const BUBBLES_ROUND_DURATION_MS = 60_000;
+export const BUBBLES_ROUND_DURATION_MS = 30_000;
 export const BUBBLES_PLAYER_STORAGE_KEY = "page_bolinhas_player";
 export const BUBBLES_RANKING_POLL_INTERVAL_MS = 3_000;
 

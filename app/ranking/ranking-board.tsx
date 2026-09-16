@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchRanking, formatRankingResult, formatScore, isRankingConfigured, RANKING_POLL_INTERVAL_MS, type RankingEntry } from "./ranking-service";
+import { clearRanking, downloadParticipantsSpreadsheet, fetchRanking, formatRankingResult, formatScore, isRankingConfigured, RANKING_POLL_INTERVAL_MS, type RankingEntry } from "./ranking-service";
 
 const medals = ["🥇", "🥈", "🥉"];
 
@@ -38,6 +38,8 @@ export function RankingBoard() {
     isRankingConfigured() ? "loading" : "unconfigured",
   );
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [actionMessage, setActionMessage] = useState("");
+  const [isActionPending, setIsActionPending] = useState(false);
 
   useEffect(() => {
     if (!isRankingConfigured()) return;
@@ -67,6 +69,38 @@ export function RankingBoard() {
 
   const podium = entries.slice(0, 3);
   const remaining = entries.slice(3);
+  const actionsDisabled = isActionPending || status === "loading" || status === "unconfigured";
+
+  function handleExportParticipants() {
+    if (entries.length === 0) {
+      setActionMessage("Não existem participantes para exportar.");
+      return;
+    }
+
+    downloadParticipantsSpreadsheet(entries);
+    setActionMessage("Exportação de participantes iniciada.");
+  }
+
+  async function handleClearRanking() {
+    const confirmed = window.confirm("Tem certeza que deseja apagar todo o ranking? Esta ação não poderá ser desfeita.");
+
+    if (!confirmed) return;
+
+    setIsActionPending(true);
+    setActionMessage("");
+
+    try {
+      await clearRanking();
+      setEntries([]);
+      setStatus("ready");
+      setLastUpdated(new Date());
+      setActionMessage("Ranking limpo com sucesso.");
+    } catch {
+      setActionMessage("Não foi possível limpar o ranking agora.");
+    } finally {
+      setIsActionPending(false);
+    }
+  }
 
   return (
     <section className="event-ranking-board" aria-labelledby="ranking-title">
@@ -84,6 +118,19 @@ export function RankingBoard() {
 
       {status === "error" && <div className="event-ranking-state" role="status">Não foi possível atualizar o ranking agora. Nova tentativa em instantes.</div>}
       {status === "loading" && <div className="event-ranking-state" role="status">Carregando ranking...</div>}
+
+      {status !== "unconfigured" && (
+        <div className="event-ranking-actions" aria-label="Ações do ranking">
+          <button className="event-ranking-action" disabled={actionsDisabled} onClick={handleExportParticipants} type="button">
+            Exportar Participantes
+          </button>
+          <button className="event-ranking-action event-ranking-action-danger" disabled={actionsDisabled} onClick={handleClearRanking} type="button">
+            {isActionPending ? "Limpando..." : "Limpar Ranking"}
+          </button>
+        </div>
+      )}
+
+      {actionMessage && <div className="event-ranking-action-state" role="status">{actionMessage}</div>}
 
       {podium.length > 0 && <RankingPodium entries={podium} />}
 

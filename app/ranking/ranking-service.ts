@@ -20,12 +20,28 @@ export type RankingEntry = Omit<GameResultInput, "telefone" | "palavrasDetalhada
   telefone?: string;
 };
 
+type ParticipantExportEntry = Pick<RankingEntry, "nome" | "telefone">;
+type WorkbookFile = {
+  name: string;
+  content: string;
+};
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim().replace(/\/$/, "");
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
 const rankingTable = process.env.NEXT_PUBLIC_WORD_SEARCH_RANKING_TABLE?.trim() || "word_search_rankings";
 const MAX_ROUND_TIME_MS = 45_000;
 const POINTS_PER_WORD = 100_000;
 export const RANKING_POLL_INTERVAL_MS = 3_000;
+
+const CRC32_TABLE = Array.from({ length: 256 }, (_, index) => {
+  let value = index;
+
+  for (let bit = 0; bit < 8; bit += 1) {
+    value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
+  }
+
+  return value >>> 0;
+});
 
 export function isRankingConfigured() {
   return Boolean(supabaseUrl && supabaseAnonKey);
@@ -41,7 +57,7 @@ function getSupabaseConfig() {
 function getRankingEndpoint() {
   const config = getSupabaseConfig();
   const params = new URLSearchParams({
-    select: "id,nome,palavrasEncontradas:palavras_encontradas,totalPalavras:total_palavras,tempoResultadoMs:tempo_total_ms,pontuacao,dataInicio:data_inicio,dataFinalizacao:data_finalizacao",
+    select: "id,nome,telefone,palavrasEncontradas:palavras_encontradas,totalPalavras:total_palavras,tempoResultadoMs:tempo_total_ms,pontuacao,dataInicio:data_inicio,dataFinalizacao:data_finalizacao",
     order: "palavras_encontradas.desc,tempo_total_ms.asc,pontuacao.desc,data_finalizacao.asc",
   });
 
@@ -114,6 +130,190 @@ export function formatRankingResult(wordsFound: number, elapsedMs: number) {
   return `${formatWordCount(safeWords)} ${safeWords === 1 ? "encontrada" : "encontradas"} em ${formatRankingDuration(elapsedMs)}`;
 }
 
+function escapeXml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function encodeUtf8(value: string) {
+  return new TextEncoder().encode(value);
+}
+
+function createZipArchive(files: WorkbookFile[]) {
+  const localFileParts: Uint8Array[] = [];
+  const centralDirectoryParts: Uint8Array[] = [];
+  let localOffset = 0;
+  const now = new Date();
+  const dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | Math.floor(now.getSeconds() / 2);
+  const dosDate = ((Math.max(1980, now.getFullYear()) - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+
+  for (const file of files) {
+    const fileName = encodeUtf8(file.name);
+    const data = encodeUtf8(file.content);
+    const checksum = crc32(data);
+    const localHeader = new Uint8Array(30 + fileName.length);
+    const localHeaderView = new DataView(localHeader.buffer);
+
+    localHeaderView.setUint32(0, 0x04034b50, true);
+    localHeaderView.setUint16(4, 20, true);
+    localHeaderView.setUint16(6, 0x0800, true);
+    localHeaderView.setUint16(8, 0, true);
+    localHeaderView.setUint16(10, dosTime, true);
+    localHeaderView.setUint16(12, dosDate, true);
+    localHeaderView.setUint32(14, checksum, true);
+    localHeaderView.setUint32(18, data.length, true);
+    localHeaderView.setUint32(22, data.length, true);
+    localHeaderView.setUint16(26, fileName.length, true);
+    localHeader.set(fileName, 30);
+
+    localFileParts.push(localHeader, data);
+
+    const centralHeader = new Uint8Array(46 + fileName.length);
+    const centralHeaderView = new DataView(centralHeader.buffer);
+
+    centralHeaderView.setUint32(0, 0x02014b50, true);
+    centralHeaderView.setUint16(4, 20, true);
+    centralHeaderView.setUint16(6, 20, true);
+    centralHeaderView.setUint16(8, 0x0800, true);
+    centralHeaderView.setUint16(10, 0, true);
+    centralHeaderView.setUint16(12, dosTime, true);
+    centralHeaderView.setUint16(14, dosDate, true);
+    centralHeaderView.setUint32(16, checksum, true);
+    centralHeaderView.setUint32(20, data.length, true);
+    centralHeaderView.setUint32(24, data.length, true);
+    centralHeaderView.setUint16(28, fileName.length, true);
+    centralHeaderView.setUint32(42, localOffset, true);
+    centralHeader.set(fileName, 46);
+
+    centralDirectoryParts.push(centralHeader);
+    localOffset += localHeader.length + data.length;
+  }
+
+  const localFiles = concatUint8Arrays(localFileParts);
+  const centralDirectory = concatUint8Arrays(centralDirectoryParts);
+  const endOfCentralDirectory = new Uint8Array(22);
+  const endOfCentralDirectoryView = new DataView(endOfCentralDirectory.buffer);
+
+  endOfCentralDirectoryView.setUint32(0, 0x06054b50, true);
+  endOfCentralDirectoryView.setUint16(8, files.length, true);
+  endOfCentralDirectoryView.setUint16(10, files.length, true);
+  endOfCentralDirectoryView.setUint32(12, centralDirectory.length, true);
+  endOfCentralDirectoryView.setUint32(16, localFiles.length, true);
+
+  return concatUint8Arrays([localFiles, centralDirectory, endOfCentralDirectory]);
+}
+
+function crc32(bytes: Uint8Array) {
+  let checksum = 0xffffffff;
+
+  for (const byte of bytes) {
+    checksum = (checksum >>> 8) ^ CRC32_TABLE[(checksum ^ byte) & 0xff];
+  }
+
+  return (checksum ^ 0xffffffff) >>> 0;
+}
+
+function concatUint8Arrays(parts: Uint8Array[]) {
+  const length = parts.reduce((total, part) => total + part.length, 0);
+  const output = new Uint8Array(length);
+  let offset = 0;
+
+  for (const part of parts) {
+    output.set(part, offset);
+    offset += part.length;
+  }
+
+  return output;
+}
+
+function spreadsheetCell(reference: string, value: string) {
+  return `<c r="${reference}" t="inlineStr"><is><t>${escapeXml(value)}</t></is></c>`;
+}
+
+function createParticipantsWorksheet(participants: ParticipantExportEntry[]) {
+  const rows = [
+    ["Nome", "Telefone"],
+    ...participants.map((participant) => [participant.nome, participant.telefone ?? ""]),
+  ];
+
+  const sheetRows = rows
+    .map((row, rowIndex) => {
+      const rowNumber = rowIndex + 1;
+      return `<row r="${rowNumber}">${spreadsheetCell(`A${rowNumber}`, row[0])}${spreadsheetCell(`B${rowNumber}`, row[1])}</row>`;
+    })
+    .join("");
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="A1:B${rows.length}"/>
+  <sheetViews><sheetView workbookViewId="0"/></sheetViews>
+  <sheetFormatPr defaultRowHeight="15"/>
+  <cols><col min="1" max="1" width="28" customWidth="1"/><col min="2" max="2" width="20" customWidth="1"/></cols>
+  <sheetData>${sheetRows}</sheetData>
+</worksheet>`;
+}
+
+function createParticipantsWorkbook(participants: ParticipantExportEntry[]) {
+  return createZipArchive([
+    {
+      name: "[Content_Types].xml",
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>`,
+    },
+    {
+      name: "_rels/.rels",
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`,
+    },
+    {
+      name: "xl/workbook.xml",
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="Participantes" sheetId="1" r:id="rId1"/></sheets>
+</workbook>`,
+    },
+    {
+      name: "xl/_rels/workbook.xml.rels",
+      content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>`,
+    },
+    {
+      name: "xl/worksheets/sheet1.xml",
+      content: createParticipantsWorksheet(participants),
+    },
+  ]);
+}
+
+export function downloadParticipantsSpreadsheet(participants: ParticipantExportEntry[]) {
+  const workbook = createParticipantsWorkbook(participants);
+  const today = new Date().toISOString().slice(0, 10);
+  const blob = new Blob([workbook], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = `participantes-caca-palavras-${today}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 export function calculateScore(wordsFound: number, elapsedMs: number) {
   // Cada palavra vale 100.000 pontos, e o tempo da última palavra encontrada é subtraído em milissegundos.
   // Como a rodada tem 45.000 ms, uma palavra extra sempre vale mais que qualquer bônus de velocidade.
@@ -139,11 +339,12 @@ function normalizeEntry(value: unknown): RankingEntry | null {
   const dataInicio = typeof item.dataInicio === "string" ? item.dataInicio : typeof item.data_inicio === "string" ? item.data_inicio : "";
   const dataFinalizacao = typeof item.dataFinalizacao === "string" ? item.dataFinalizacao : typeof item.data_finalizacao === "string" ? item.data_finalizacao : "";
   const id = typeof item.id === "string" && item.id.trim() ? item.id : `${nome}-${dataFinalizacao}-${tempoResultadoMs}`;
+  const telefone = typeof item.telefone === "string" ? item.telefone : "";
 
   if (!id || !nome || !Number.isFinite(palavrasEncontradas) || !Number.isFinite(totalPalavras) || !Number.isFinite(tempoResultadoMs) || !Number.isFinite(pontuacao) || !dataInicio || !dataFinalizacao) return null;
   if (palavrasEncontradas < 0 || totalPalavras < 1 || palavrasEncontradas > totalPalavras || tempoResultadoMs < 0 || pontuacao < 0) return null;
 
-  return { id, nome, palavrasEncontradas, totalPalavras, tempoResultadoMs, pontuacao, dataInicio, dataFinalizacao };
+  return { id, nome, telefone, palavrasEncontradas, totalPalavras, tempoResultadoMs, pontuacao, dataInicio, dataFinalizacao };
 }
 
 function normalizeRankingPayload(payload: unknown) {
@@ -191,6 +392,21 @@ export async function fetchRanking() {
 
   if (!response.ok) throw new Error("Não foi possível carregar o ranking.");
   return normalizeRankingPayload(await response.json());
+}
+
+export async function clearRanking() {
+  const config = getSupabaseConfig();
+  const response = await fetch(`${config.supabaseUrl}/rest/v1/rpc/clear_word_search_rankings`, {
+    method: "POST",
+    headers: {
+      ...getSupabaseHeaders(),
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: "{}",
+  });
+
+  if (!response.ok) throw new Error("Não foi possível limpar o ranking.");
 }
 
 export async function submitGameResult(input: GameResultInput, totalWords: number) {

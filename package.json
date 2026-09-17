@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "clear:bolinhas-ranking": "node scripts/clear-bolinhas-ranking.mjs"
+    "ranking:clear": "node scripts/clear-ranking.mjs"
   },
   "dependencies": {
     "next": "16.3.4",

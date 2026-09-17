@@ -1,0 +1,18 @@
+[
+  {
+    "game": "word-search",
+    "aliases": ["caca-palavras", "caça-palavras", "caca", "wordsearch"],
+    "label": "Caça-Palavras",
+    "tableEnv": "NEXT_PUBLIC_WORD_SEARCH_RANKING_TABLE",
+    "defaultTable": "word_search_rankings",
+    "rankingPath": "/ranking"
+  },
+  {
+    "game": "reaction-game",
+    "aliases": ["bolinhas", "bolinhas-page", "bubbles", "jogo-de-reflexo"],
+    "label": "Bolinhas Page",
+    "tableEnv": "NEXT_PUBLIC_BUBBLES_RANKING_TABLE",
+    "defaultTable": "bubbles_rankings",
+    "rankingPath": "/minigames/bolinhas-page/ranking"
+  }
+]

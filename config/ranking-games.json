@@ -1,18 +1,56 @@
 [
   {
     "game": "word-search",
-    "aliases": ["caca-palavras", "caça-palavras", "caca", "wordsearch"],
+    "aliases": [
+      "caca-palavras",
+      "caça-palavras",
+      "caca",
+      "wordsearch"
+    ],
     "label": "Caça-Palavras",
     "tableEnv": "NEXT_PUBLIC_WORD_SEARCH_RANKING_TABLE",
     "defaultTable": "word_search_rankings",
     "rankingPath": "/ranking"
   },
   {
+    "game": "memory-game",
+    "aliases": [
+      "memoria",
+      "memória",
+      "jogo-da-memoria",
+      "jogo-da-memória",
+      "memory"
+    ],
+    "label": "Jogo da Memória",
+    "tableEnv": "NEXT_PUBLIC_MEMORY_RANKING_TABLE",
+    "defaultTable": "memory_rankings",
+    "rankingPath": "/minigames/memoria"
+  },
+  {
     "game": "reaction-game",
-    "aliases": ["bolinhas", "bolinhas-page", "bubbles", "jogo-de-reflexo"],
+    "aliases": [
+      "bolinhas",
+      "bolinhas-page",
+      "bubbles",
+      "jogo-de-reflexo"
+    ],
     "label": "Bolinhas Page",
     "tableEnv": "NEXT_PUBLIC_BUBBLES_RANKING_TABLE",
     "defaultTable": "bubbles_rankings",
     "rankingPath": "/minigames/bolinhas-page/ranking"
+  },
+  {
+    "game": "find-ticket",
+    "aliases": [
+      "encontre-o-ingresso",
+      "encontre-tudo",
+      "caça-aos-objetos",
+      "caca-aos-objetos",
+      "bag-hunt"
+    ],
+    "label": "Encontre Tudo",
+    "tableEnv": "NEXT_PUBLIC_FIND_TICKET_RANKING_TABLE",
+    "defaultTable": "find_ticket_rankings",
+    "rankingPath": "/minigames/encontre-o-ingresso"
   }
 ]

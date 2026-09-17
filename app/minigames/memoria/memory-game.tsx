@@ -2,25 +2,26 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createRound, DURATION, flip, symbols, tick, type Round } from "./engine";
+import {
+  isMemoryRankingConfigured,
+  loadMemoryRanking,
+  MEMORY_RANKING_POLL_INTERVAL_MS,
+  saveMemoryRanking,
+  sanitizeMemoryName,
+  type MemoryRankingEntry,
+} from "./memory-ranking-service";
 
-const STORAGE_KEY = "page-games:memory-ranking:v1";
-type Entry = { id: string; name: string; score: number; pairs: number; elapsed: number };
-function readRanking(): Entry[] {
-  const data: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
-  if (!Array.isArray(data)) return [];
-  return data.filter((item): item is Entry => item && typeof item.id === "string" && typeof item.name === "string" && item.name.trim().length > 0 && item.name.length <= 30 && Number.isFinite(item.score) && item.score >= 0 && item.score <= 1920 && Number.isInteger(item.pairs) && item.pairs >= 0 && item.pairs <= 12 && Number.isFinite(item.elapsed) && item.elapsed >= 0 && item.elapsed <= DURATION);
-}
-function sortRanking(entries: Entry[]) {
-  return entries.sort((a, b) => b.score - a.score || a.elapsed - b.elapsed).slice(0, 50);
-}
 const seconds = (value: number) => (value / 1000).toFixed(1).replace(".", ",");
 
 export function MemoryGame() {
   const [screen, setScreen] = useState<"menu" | "game" | "ranking">("menu");
   const [round, setRound] = useState<Round | null>(null);
   const [name, setName] = useState("");
-  const [ranking, setRanking] = useState<Entry[]>([]);
+  const [ranking, setRanking] = useState<MemoryRankingEntry[]>([]);
   const [notice, setNotice] = useState("");
+  const [rankingStatus, setRankingStatus] = useState<"loading" | "ready" | "error" | "unconfigured">(
+    isMemoryRankingConfigured() ? "loading" : "unconfigured",
+  );
   const [saved, setSaved] = useState(false);
   const savedRef = useRef(false);
   const resultHeading = useRef<HTMLHeadingElement>(null);
@@ -38,6 +39,31 @@ export function MemoryGame() {
     if (round?.ended) resultHeading.current?.focus();
   }, [round?.ended]);
 
+  useEffect(() => {
+    if (screen !== "ranking" || !isMemoryRankingConfigured()) return;
+    let active = true;
+
+    async function load() {
+      try {
+        const nextRanking = await loadMemoryRanking();
+        if (!active) return;
+        setRanking(nextRanking);
+        setRankingStatus("ready");
+      } catch {
+        if (!active) return;
+        setRankingStatus("error");
+      }
+    }
+
+    void load();
+    const interval = window.setInterval(() => { void load(); }, MEMORY_RANKING_POLL_INTERVAL_MS);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [screen]);
+
   function start() {
     setRound(createRound(performance.now()));
     setSaved(false);
@@ -45,23 +71,56 @@ export function MemoryGame() {
     setNotice("");
     setScreen("game");
   }
-  function showRanking() {
+
+  async function showRanking() {
     setNotice("");
-    try { setRanking(sortRanking(readRanking())); }
-    catch { setRanking([]); setNotice("Não foi possível ler o ranking neste navegador."); }
+    if (!isMemoryRankingConfigured()) {
+      setRanking([]);
+      setRankingStatus("unconfigured");
+      setScreen("ranking");
+      return;
+    }
+
+    setRankingStatus("loading");
     setScreen("ranking");
+    try {
+      const nextRanking = await loadMemoryRanking();
+      setRanking(nextRanking);
+      setRankingStatus("ready");
+    } catch {
+      setRanking([]);
+      setRankingStatus("error");
+    }
   }
-  function save(event: React.FormEvent<HTMLFormElement>) {
+
+  async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!round?.ended || !name.trim() || savedRef.current) return;
-    const entry = { id: crypto.randomUUID(), name: name.trim(), score: round.score, pairs: round.matched.length / 2, elapsed: round.now - round.startedAt };
+
+    const entry = {
+      id: crypto.randomUUID(),
+      name: sanitizeMemoryName(name),
+      score: round.score,
+      pairs: round.matched.length / 2,
+      elapsed: round.now - round.startedAt,
+    };
+
+    if (!isMemoryRankingConfigured()) {
+      setNotice("Ranking geral não configurado.");
+      return;
+    }
+
     try {
-      const entries = sortRanking([...readRanking(), entry]);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+      setNotice("Salvando no ranking geral...");
+      const entries = await saveMemoryRanking(entry);
       savedRef.current = true;
       setSaved(true);
-      setNotice("Pontuação salva!");
-    } catch { setNotice("Não foi possível salvar. Verifique se o armazenamento do navegador está permitido e tente novamente."); }
+      setRanking(entries);
+      setRankingStatus("ready");
+      setNotice("Pontuação salva no ranking geral!");
+    } catch {
+      setNotice("Não foi possível salvar no ranking geral. Tente novamente.");
+    }
   }
 
   const remaining = round ? Math.max(0, Math.ceil((DURATION - (round.now - round.startedAt)) / 1000)) : 60;
@@ -98,14 +157,17 @@ export function MemoryGame() {
       </> : <div className="memory-panel memory-result">
         <h2 ref={resultHeading} tabIndex={-1}>{round.matched.length === 24 ? "Você encontrou todos os pares!" : "Tempo esgotado!"}</h2>
         <p>{round.score} pontos · {round.matched.length / 2} pares · {seconds(round.now - round.startedAt)} s</p>
-        {!saved && <form onSubmit={save} className="score-form"><label htmlFor="player-name">Seu nome no ranking</label><input id="player-name" value={name} onChange={(event) => setName(event.target.value)} maxLength={30} required autoComplete="nickname" placeholder="Digite seu nome" /><button className="primary-button" disabled={!name.trim()} type="submit">Salvar pontuação</button></form>}
+        {!saved && <form onSubmit={save} className="score-form"><label htmlFor="player-name">Seu nome no ranking geral</label><input id="player-name" value={name} onChange={(event) => setName(event.target.value)} maxLength={30} required autoComplete="nickname" placeholder="Digite seu nome" /><button className="primary-button" disabled={!name.trim()} type="submit">Salvar pontuação</button></form>}
         <p role="status">{notice}</p>
         <div className="memory-actions"><button className="primary-button" onClick={start}>Jogar novamente</button><button className="secondary-button" onClick={showRanking}>Ranking</button></div>
       </div>}
     </>}
 
     {screen === "ranking" && <div className="memory-panel">
-      <h2>Ranking</h2><p className="memory-hint">Top 50 deste navegador · maior pontuação primeiro.</p>
+      <h2>Ranking</h2><p className="memory-hint">Top 50 geral · maior pontuação primeiro.</p>
+      {rankingStatus === "unconfigured" && <p role="status">Configure o Supabase para ativar o ranking geral.</p>}
+      {rankingStatus === "loading" && <p role="status">Carregando ranking geral...</p>}
+      {rankingStatus === "error" && <p role="status">Não foi possível carregar o ranking geral agora.</p>}
       {notice && <p role="status">{notice}</p>}
       {ranking.length ? <div className="ranking-scroll"><table className="ranking-table"><caption className="sr-only">Jogadores, pontuação, pares encontrados e tempo gasto</caption><thead><tr><th scope="col">#</th><th scope="col">Jogador</th><th scope="col">Pontos</th><th scope="col">Pares</th><th scope="col">Tempo</th></tr></thead><tbody>{ranking.map((entry, index) => <tr key={entry.id}><td>{index + 1}</td><th scope="row">{entry.name}</th><td>{entry.score}</td><td>{entry.pairs}/12</td><td>{seconds(entry.elapsed)} s</td></tr>)}</tbody></table></div> : <p className="ranking-empty">Ainda não há pontuações. Que tal ser o primeiro?</p>}
       <div className="memory-actions"><button className="primary-button" onClick={start}>Iniciar</button><button className="secondary-button" onClick={() => setScreen("menu")}>Voltar</button></div>

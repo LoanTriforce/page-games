@@ -3,7 +3,6 @@ export const GAME_RULES = {
   pointsPerItem: 200,
   pointsPerSecondRemaining: 30,
   wrongClickMilliseconds: 2000,
-  rankingKey: "page-games-bag-ranking-v2",
   playerKey: "page-games-bag-player",
   eventsUrl: "https://pageeventos.com.br/",
 } as const;

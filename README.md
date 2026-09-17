@@ -24,21 +24,27 @@ Os rankings globais usam Supabase como backend persistente, porque o projeto é 
 Mini games persistentes configurados:
 
 - `word-search` — Caça-Palavras — tabela `word_search_rankings` — rota `/ranking`
+- `memory-game` — Jogo da Memória — tabela `memory_rankings` — rota `/minigames/memoria`
 - `reaction-game` — Bolinhas Page — tabela `bubbles_rankings` — rota `/minigames/bolinhas-page/ranking`
+- `find-ticket` — Encontre Tudo — tabela `find_ticket_rankings` — rota `/minigames/encontre-o-ingresso`
 
 Essa separação impede que resultados do Caça-Palavras apareçam no ranking do Bolinhas Page, e vice-versa. A configuração administrativa dos jogos fica em `config/ranking-games.json`.
 
 1. Crie um projeto no Supabase.
 2. Execute os SQLs necessários no SQL Editor do Supabase:
    - `supabase/word-search-ranking.sql`
+   - `supabase/memory-ranking.sql`
    - `supabase/bubbles-ranking.sql`
+   - `supabase/find-ticket-ranking.sql`
 3. Configure as variáveis públicas do `.env.local`:
 
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=https://seu-projeto.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=sua-chave-anon-public
 NEXT_PUBLIC_WORD_SEARCH_RANKING_TABLE=word_search_rankings
+NEXT_PUBLIC_MEMORY_RANKING_TABLE=memory_rankings
 NEXT_PUBLIC_BUBBLES_RANKING_TABLE=bubbles_rankings
+NEXT_PUBLIC_FIND_TICKET_RANKING_TABLE=find_ticket_rankings
 ```
 
 Em produção, adicione as mesmas variáveis em Settings > Secrets and variables > Actions > Variables no GitHub.
@@ -47,7 +53,11 @@ O Caça-Palavras solicita nome e telefone antes de cada rodada, inicia o cronôm
 
 A pontuação do Caça-Palavras é calculada no código e validada no banco com a fórmula `palavras_encontradas * 100000 - tempo_total_ms`, limitada ao mínimo de zero. O campo `tempo_total_ms` representa o tempo da última palavra encontrada na rodada, e os tempos individuais ficam armazenados internamente em `palavras_detalhadas`.
 
+O Jogo da Memória salva resultados na tabela `memory_rankings` e a tela de ranking dentro de `/minigames/memoria` consulta essa tabela a cada 3 segundos, ordenando por maior pontuação, menor tempo e data mais antiga.
+
 O Bolinhas Page salva resultados na tabela `bubbles_rankings` e a rota `/minigames/bolinhas-page/ranking` consulta essa tabela a cada 3 segundos, ordenando por maior quantidade de bolinhas clicadas, menor tempo, maior pontuação e data mais antiga.
+
+O Encontre Tudo salva resultados na tabela `find_ticket_rankings` e o ranking exibido em `/minigames/encontre-o-ingresso` consulta essa tabela a cada 3 segundos, ordenando por maior pontuação, menor tempo e data mais antiga.
 
 ## Limpeza administrativa de ranking
 
@@ -63,14 +73,18 @@ Comandos disponíveis:
 
 ```bash
 npm run ranking:clear -- --game=word-search
+npm run ranking:clear -- --game=memory-game
 npm run ranking:clear -- --game=reaction-game
+npm run ranking:clear -- --game=find-ticket
 npm run ranking:clear -- --all
 ```
 
 Aliases aceitos:
 
 - `caca-palavras`, `caça-palavras`, `caca`, `wordsearch` apontam para `word-search`
+- `memoria`, `memória`, `jogo-da-memoria`, `jogo-da-memória`, `memory` apontam para `memory-game`
 - `bolinhas`, `bolinhas-page`, `bubbles`, `jogo-de-reflexo` apontam para `reaction-game`
+- `encontre-o-ingresso`, `encontre-tudo`, `caça-aos-objetos`, `caca-aos-objetos`, `bag-hunt` apontam para `find-ticket`
 
 Proteções contra exclusão acidental:
 
@@ -80,7 +94,9 @@ Proteções contra exclusão acidental:
 - Antes de apagar, o script consulta e mostra o total de registros afetados.
 - A exclusão só continua se o administrador digitar exatamente `CONFIRMAR`.
 - `--game=word-search` apaga somente `word_search_rankings`.
+- `--game=memory-game` apaga somente `memory_rankings`.
 - `--game=reaction-game` apaga somente `bubbles_rankings`.
+- `--game=find-ticket` apaga somente `find_ticket_rankings`.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

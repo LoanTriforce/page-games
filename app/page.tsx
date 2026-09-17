@@ -10,6 +10,7 @@ export default function Home() {
         <h1 id="games-title">Escolha o minigame</h1>
         <div className="games-grid">
           <Link href="/minigames/encontre-o-ingresso" className="game-card"><svg className="game-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M7 20h34v20H7zM11 20l5-12h16l5 12M16 29h16M20 35h8"/></svg><span className="game-name">Encontre o ingresso</span><span className="game-arrow" aria-hidden="true">↗</span></Link>
+          <Link href="/minigames/bolinhas-page" className="game-card"><svg className="game-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="15" cy="18" r="7" /><circle cx="31" cy="14" r="5" /><circle cx="32" cy="31" r="8" /><path d="M13 12c2-4 7-5 11-3M26 34c-4 0-8-2-10-5M36 25c4 3 5 8 2 12" /></svg><span className="game-name">Bolinhas Page</span><span className="game-arrow" aria-hidden="true">↗</span></Link>
           {games.map((game) => (
             <Link key={game.slug} href={`/minigames/${game.slug}`} className="game-card">
               <svg className="game-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

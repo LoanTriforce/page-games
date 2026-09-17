@@ -4,9 +4,10 @@ import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { playGameSound } from "./audio";
 import { formatTime, GAME_RULES, makeScene, pointsForItem, TARGETS, type SceneObject, type TargetId } from "./engine";
-import { loadRanking, saveRanking, type RankingEntry } from "./ranking";
+import { FIND_TICKET_RANKING_POLL_INTERVAL_MS, isFindTicketRankingConfigured, loadRanking, sanitizeFindTicketName, saveRanking, type RankingEntry } from "./ranking";
 
 type Phase = "idle" | "playing" | "finished";
+type RankingStatus = "loading" | "ready" | "error" | "unconfigured";
 type Result = { remaining: number; score: number; position: number; completed: boolean; itemsFound: number };
 const assetPrefix = process.env.NODE_ENV === "production" ? "/page-games" : "";
 
@@ -30,10 +31,13 @@ function Timer({ running, remainingRef, score }: { running: boolean; remainingRe
   return <div className="ticket-timer-readout"><strong className="ticket-time" aria-label={`Tempo restante ${formatTime(display)}`}>{formatTime(display)}</strong><span>{score.toLocaleString("pt-BR")} pontos</span></div>;
 }
 
-function RankingBoard({ entries }: { entries: RankingEntry[] }) {
+function RankingBoard({ entries, status }: { entries: RankingEntry[]; status: RankingStatus }) {
   return <section className="bag-ranking" aria-labelledby="bag-ranking-title">
-    <div className="bag-ranking-head"><h2 id="bag-ranking-title">Ranking</h2><span>NESTE DISPOSITIVO</span></div>
-    {entries.length ? <ol>{entries.map((entry, index) => <li key={entry.id}><span>{String(index + 1).padStart(2, "0")}</span><strong>{entry.name}</strong><b>{entry.score.toLocaleString("pt-BR")}</b><small>{formatTime(entry.time)}</small></li>)}</ol> : <p>Encontre todos os itens para entrar no ranking.</p>}
+    <div className="bag-ranking-head"><h2 id="bag-ranking-title">Ranking</h2><span>GERAL</span></div>
+    {status === "unconfigured" && <p>Configure o Supabase para ativar o ranking geral.</p>}
+    {status === "loading" && <p>Carregando ranking geral...</p>}
+    {status === "error" && <p>Não foi possível carregar o ranking geral agora.</p>}
+    {entries.length ? <ol>{entries.map((entry, index) => <li key={entry.id}><span>{String(index + 1).padStart(2, "0")}</span><strong>{entry.name}</strong><b>{entry.score.toLocaleString("pt-BR")}</b><small>{formatTime(entry.time)}</small></li>)}</ol> : status === "ready" ? <p>Encontre todos os itens para entrar no ranking.</p> : null}
   </section>;
 }
 
@@ -59,6 +63,8 @@ export function FindObjectsGame() {
   const [found, setFound] = useState<Set<TargetId>>(new Set());
   const [feedback, setFeedback] = useState("");
   const [entries, setEntries] = useState<RankingEntry[]>([]);
+  const [rankingStatus, setRankingStatus] = useState<RankingStatus>(isFindTicketRankingConfigured() ? "loading" : "unconfigured");
+  const [rankingMessage, setRankingMessage] = useState("");
   const [nickname, setNickname] = useState("Jogador");
   const [score, setScore] = useState(0);
   const [result, setResult] = useState<Result | null>(null);
@@ -71,11 +77,37 @@ export function FindObjectsGame() {
   const feedbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    let active = true;
+
+    async function refreshRanking() {
+      if (!isFindTicketRankingConfigured()) {
+        setRankingStatus("unconfigured");
+        return;
+      }
+
+      try {
+        const nextEntries = await loadRanking();
+        if (!active) return;
+        setEntries(nextEntries);
+        setRankingStatus("ready");
+      } catch {
+        if (!active) return;
+        setRankingStatus("error");
+      }
+    }
+
     const frame = requestAnimationFrame(() => {
-      setEntries(loadRanking());
+      void refreshRanking();
       try { const saved = localStorage.getItem(GAME_RULES.playerKey); if (saved) setNickname(saved); } catch { /* storage may be unavailable */ }
     });
-    return () => { cancelAnimationFrame(frame); if (feedbackTimeout.current) clearTimeout(feedbackTimeout.current); };
+    const interval = window.setInterval(() => { void refreshRanking(); }, FIND_TICKET_RANKING_POLL_INTERVAL_MS);
+
+    return () => {
+      active = false;
+      cancelAnimationFrame(frame);
+      window.clearInterval(interval);
+      if (feedbackTimeout.current) clearTimeout(feedbackTimeout.current);
+    };
   }, []);
 
   const finishTimeout = useCallback(() => {
@@ -100,14 +132,15 @@ export function FindObjectsGame() {
 
   const startGame = useCallback(() => {
     if (feedbackTimeout.current) clearTimeout(feedbackTimeout.current);
+    const playerName = sanitizeFindTicketName(nickname);
     phaseRef.current = "playing";
     foundRef.current = new Set();
     startRef.current = performance.now();
     penaltyRef.current = 0;
     remainingRef.current = GAME_RULES.roundMilliseconds;
     scoreRef.current = 0;
-    setFound(new Set()); setScene(makeScene()); setFeedback(""); setResult(null); setScore(0); setPhase("playing");
-    try { localStorage.setItem(GAME_RULES.playerKey, nickname.trim().slice(0, 18) || "Jogador"); } catch { /* storage may be unavailable */ }
+    setFound(new Set()); setScene(makeScene()); setFeedback(""); setRankingMessage(""); setResult(null); setScore(0); setNickname(playerName); setPhase("playing");
+    try { localStorage.setItem(GAME_RULES.playerKey, playerName); } catch { /* storage may be unavailable */ }
     playGameSound("gameStart");
   }, [nickname]);
 
@@ -137,22 +170,41 @@ export function FindObjectsGame() {
     if (feedbackTimeout.current) clearTimeout(feedbackTimeout.current);
     feedbackTimeout.current = setTimeout(() => setFeedback(""), 1100);
     if (foundRef.current.size !== TARGETS.length) return;
+
     phaseRef.current = "finished";
     const time = GAME_RULES.roundMilliseconds - remaining;
-    const saved = saveRanking({ id: crypto.randomUUID(), name: nickname.trim().slice(0, 18) || "Jogador", time, score: scoreRef.current, date: new Date().toISOString() });
-    setEntries(saved.entries);
-    setResult({ remaining, score: scoreRef.current, position: saved.position, completed: true, itemsFound: TARGETS.length });
+    const entry = { id: crypto.randomUUID(), name: sanitizeFindTicketName(nickname), time, score: scoreRef.current, date: new Date().toISOString() };
+    setResult({ remaining, score: scoreRef.current, position: 0, completed: true, itemsFound: TARGETS.length });
     setPhase("finished");
     playGameSound("ticketFound");
+
+    if (!isFindTicketRankingConfigured()) {
+      setRankingMessage("Ranking geral não configurado.");
+      setRankingStatus("unconfigured");
+      return;
+    }
+
+    setRankingMessage("Salvando no ranking geral...");
+    void saveRanking(entry)
+      .then((saved) => {
+        setEntries(saved.entries);
+        setRankingStatus("ready");
+        setResult((current) => current ? { ...current, position: saved.position } : current);
+        setRankingMessage("Resultado salvo no ranking geral.");
+      })
+      .catch(() => {
+        setRankingStatus("error");
+        setRankingMessage("Não foi possível salvar no ranking geral.");
+      });
   }, [finishTimeout, nickname]);
 
   return <section className="find-ticket-game bag-hunt-game">
     <div className="ticket-heading"><div><p className="ticket-eyebrow">PAGE GAMES / CAÇA AOS OBJETOS</p><h1>Encontre <span>tudo!</span></h1><p className="ticket-lead">Você tem 30 segundos para encontrar os seis itens do checklist dentro da bolsa.</p></div><div className="ticket-score-chip"><small>ITENS PARA ENCONTRAR</small><strong>{TARGETS.length}</strong></div></div>
-    {phase === "idle" ? <div className="bag-intro-layout"><div className="ticket-intro"><div className="ticket-intro-art" aria-hidden="true"><span className="intro-bag">✦</span><Image className="bag-intro-sprite" src={`${assetPrefix}/games/find-ticket/sprite-ticket.png`} alt="" width={96} height={96} unoptimized /></div><p>Encontre todos os objetos em 30 segundos. Quanto mais cedo achar cada item, mais pontos ganha. Um toque errado tira dois segundos.</p><label className="bag-player-label">Seu nome no ranking<input value={nickname} onChange={(event) => setNickname(event.target.value)} maxLength={18} autoComplete="nickname" /></label><button className="ticket-primary" onClick={startGame}>Jogar <span aria-hidden="true">↗</span></button><small>O ingresso falso e os objetos de decoração podem enganar você.</small></div><RankingBoard entries={entries} /></div> : <>
+    {phase === "idle" ? <div className="bag-intro-layout"><div className="ticket-intro"><div className="ticket-intro-art" aria-hidden="true"><span className="intro-bag">✦</span><Image className="bag-intro-sprite" src={`${assetPrefix}/games/find-ticket/sprite-ticket.png`} alt="" width={96} height={96} unoptimized /></div><p>Encontre todos os objetos em 30 segundos. Quanto mais cedo achar cada item, mais pontos ganha. Um toque errado tira dois segundos.</p><label className="bag-player-label">Seu nome no ranking<input value={nickname} onChange={(event) => setNickname(event.target.value)} maxLength={18} autoComplete="nickname" /></label><button className="ticket-primary" onClick={startGame}>Jogar <span aria-hidden="true">↗</span></button><small>O ingresso falso e os objetos de decoração podem enganar você.</small></div><RankingBoard entries={entries} status={rankingStatus} /></div> : <>
       <div className="ticket-toolbar"><div><small>TEMPO RESTANTE E PONTUAÇÃO</small><Timer running={phase === "playing"} remainingRef={remainingRef} score={score} /></div><p>{found.size} de {TARGETS.length} encontrados</p><span className="ticket-live">{phase === "playing" ? "● PROCURE OS ITENS" : result?.completed ? "✓ CHECKLIST COMPLETO" : "● TEMPO ESGOTADO"}</span></div>
       <div className="ticket-scene-layout"><aside className="ticket-instruction-card"><p>DESAFIO PAGE</p><h2>ENCONTRE OS {TARGETS.length} ITENS!</h2><span>Observe bem a bolsa. Os primeiros acertos valem mais pontos.</span><hr/><small>ERROS CUSTAM -2 SEGUNDOS</small></aside><Board scene={scene} found={found} feedback={feedback} onTarget={findTarget} onWrong={wrongClick} /><aside className="ticket-checklist"><h2>CHECKLIST</h2><ul>{TARGETS.map((item) => <li key={item.id} className={found.has(item.id) ? "is-done" : ""}><span aria-hidden="true">{found.has(item.id) ? "☑" : "□"}</span>{item.label}</li>)}</ul><p aria-live="polite">{TARGETS.length - found.size} itens ainda faltam.</p></aside></div>
       <p className="ticket-board-note">Encontre todos antes que o tempo acabe. Toques errados tiram dois segundos.</p>
     </>}
-    {phase === "finished" && result && <div className="ticket-modal" role="dialog" aria-modal="true" aria-labelledby="bag-result-title"><div className="ticket-modal-card"><div className="ticket-result-icon" aria-hidden="true">{result.completed ? "✓" : "⌛"}</div><p className="ticket-eyebrow">{result.completed ? "CHECKLIST CONCLUÍDO" : "FIM DA PARTIDA"}</p><h2 id="bag-result-title">{result.completed ? "PARABÉNS! VOCÊ ENCONTROU TUDO." : "TEMPO ESGOTADO!"}</h2><p>{result.completed ? `Concluiu com ${formatTime(result.remaining)} restantes.` : `Você encontrou ${result.itemsFound} de ${TARGETS.length} itens.`}</p><strong className="ticket-result-score">{result.score.toLocaleString("pt-BR")} pontos</strong>{result.completed ? <><p className="bag-promo-copy">Não perca tempo procurando ingressos na bolsa. Com a Page Eventos, você tem tudo dentro do seu celular.</p><span className="ticket-record-message">{result.position ? `${result.position}º lugar no ranking deste dispositivo` : "Continue jogando para entrar no top 10"}</span></> : <p>Procure os itens mais rápido para ganhar mais pontos e concluir o checklist.</p>}<div className="ticket-result-actions"><button className="ticket-primary" onClick={startGame}>Jogar novamente</button><a className="ticket-secondary" href={GAME_RULES.eventsUrl} target="_blank" rel="noopener noreferrer">Ver eventos da Page ↗</a></div><RankingBoard entries={entries} /></div></div>}
+    {phase === "finished" && result && <div className="ticket-modal" role="dialog" aria-modal="true" aria-labelledby="bag-result-title"><div className="ticket-modal-card"><div className="ticket-result-icon" aria-hidden="true">{result.completed ? "✓" : "⌛"}</div><p className="ticket-eyebrow">{result.completed ? "CHECKLIST CONCLUÍDO" : "FIM DA PARTIDA"}</p><h2 id="bag-result-title">{result.completed ? "PARABÉNS! VOCÊ ENCONTROU TUDO." : "TEMPO ESGOTADO!"}</h2><p>{result.completed ? `Concluiu com ${formatTime(result.remaining)} restantes.` : `Você encontrou ${result.itemsFound} de ${TARGETS.length} itens.`}</p><strong className="ticket-result-score">{result.score.toLocaleString("pt-BR")} pontos</strong>{result.completed ? <><p className="bag-promo-copy">Não perca tempo procurando ingressos na bolsa. Com a Page Eventos, você tem tudo dentro do seu celular.</p><span className="ticket-record-message">{rankingMessage || (result.position ? `${result.position}º lugar no ranking geral` : "Aguardando ranking geral")}</span></> : <p>Procure os itens mais rápido para ganhar mais pontos e concluir o checklist.</p>}<div className="ticket-result-actions"><button className="ticket-primary" onClick={startGame}>Jogar novamente</button><a className="ticket-secondary" href={GAME_RULES.eventsUrl} target="_blank" rel="noopener noreferrer">Ver eventos da Page ↗</a></div><RankingBoard entries={entries} status={rankingStatus} /></div></div>}
   </section>;
 }

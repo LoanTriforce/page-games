@@ -394,20 +394,6 @@ export async function fetchRanking() {
   return normalizeRankingPayload(await response.json());
 }
 
-export async function clearRanking() {
-  const config = getSupabaseConfig();
-  const response = await fetch(`${config.supabaseUrl}/rest/v1/rpc/clear_word_search_rankings`, {
-    method: "POST",
-    headers: {
-      ...getSupabaseHeaders(),
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: "{}",
-  });
-
-  if (!response.ok) throw new Error("Não foi possível limpar o ranking.");
-}
 
 export async function submitGameResult(input: GameResultInput, totalWords: number) {
   const id = input.id.trim();

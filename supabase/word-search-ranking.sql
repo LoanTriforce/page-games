@@ -126,16 +126,7 @@ create policy "word_search_rankings_public_insert"
     )
   );
 
-create or replace function public.clear_word_search_rankings()
-returns void
-language sql
-security definer
-set search_path = public
-as $$
-  delete from public.word_search_rankings;
-$$;
 
-revoke all on function public.clear_word_search_rankings() from public;
-grant execute on function public.clear_word_search_rankings() to anon;
+drop function if exists public.clear_word_search_rankings();
 
 grant select, insert on public.word_search_rankings to anon;

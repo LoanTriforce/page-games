@@ -274,8 +274,6 @@ button:disabled { cursor: default; }
 .event-ranking-action { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 12px; padding: 12px 18px; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); background: #ffffff08; font: inherit; font-size: clamp(13px, 1.1vw, 15px); font-weight: 800; cursor: pointer; transition: background .2s ease, border-color .2s ease, color .2s ease, opacity .2s ease; }
 .event-ranking-action:hover:not(:disabled) { color: var(--foreground); border-color: var(--accent); background: #ffffff12; }
 .event-ranking-action:disabled { cursor: not-allowed; opacity: .58; }
-.event-ranking-action-danger { margin-left: clamp(8px, 2vw, 28px); border-color: rgba(255, 115, 115, .42); color: #ffd2d2; background: rgba(255, 76, 76, .12); }
-.event-ranking-action-danger:hover:not(:disabled) { border-color: rgba(255, 115, 115, .86); color: #fff; background: rgba(255, 76, 76, .22); }
 .event-ranking-action-state { padding: 14px 18px; border: 1px solid var(--border); border-radius: 18px; background: #ffffff0d; color: var(--muted); font-size: clamp(14px, 1.1vw, 17px); font-weight: 800; }
 .event-ranking-podium { display: grid; grid-template-columns: 1fr 1.18fr 1fr; align-items: end; gap: clamp(14px, 2vw, 24px); }
 .event-ranking-podium-card { min-height: clamp(190px, 23vh, 280px); padding: clamp(22px, 2.4vw, 34px); border: 1px solid var(--border); border-radius: 28px; background: linear-gradient(145deg, #151946, #0d1035); box-shadow: 0 28px 90px #00000038; display: flex; flex-direction: column; justify-content: space-between; animation: ranking-enter .32s ease both; }
@@ -316,7 +314,6 @@ button:disabled { cursor: default; }
   .event-ranking-heading h1 { letter-spacing: -2px; }
   .event-ranking-actions { justify-content: stretch; }
   .event-ranking-action { width: 100%; }
-  .event-ranking-action-danger { margin-left: 0; }
   .event-ranking-list-header { display: none; }
   .event-ranking-row { grid-template-columns: 64px minmax(0, 1fr); gap: 8px 14px; }
   .event-ranking-row span:not(.event-ranking-row-position):not(.event-ranking-row-name), .event-ranking-row strong { grid-column: 2; font-size: 15px; }

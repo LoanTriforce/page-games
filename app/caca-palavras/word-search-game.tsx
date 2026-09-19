@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DURATION, generate, match, path, remaining, type Puzzle } from "./engine";
-import { calculateScore, formatPhone, formatRankingDuration, isRankingConfigured, isValidBrazilianPhone, normalizePhone, sanitizePlayerName, submitGameResult, type FoundWordDetail } from "../ranking/ranking-service";
+import { DUPLICATE_PARTICIPANT_MESSAGE, calculateScore, formatPhone, formatRankingDuration, hasRegisteredParticipant, isDuplicateParticipantError, isRankingConfigured, isValidBrazilianPhone, normalizePhone, sanitizePlayerName, submitGameResult, type FoundWordDetail } from "../ranking/ranking-service";
 
 type Phase = "ready" | "playing" | "finished";
 type PointerState = { id: number; start: number; oldAnchor: number | null; moved: boolean };
@@ -31,6 +31,7 @@ export function WordSearchGame() {
   const [playerPhone, setPlayerPhone] = useState("");
   const [finalFoundCount, setFinalFoundCount] = useState(0);
   const [finalScore, setFinalScore] = useState(0);
+  const [isCheckingParticipant, setIsCheckingParticipant] = useState(false);
   const pointer = useRef<PointerState | null>(null);
   const gameStartTime = useRef<number | null>(null);
   const gameStartDate = useRef<number | null>(null);
@@ -86,7 +87,9 @@ export function WordSearchGame() {
       dataFinalizacao: new Date(finishedAtDate).toISOString(),
     }, puzzle.words.length)
       .then(() => setRankingStatus(`Resultado enviado: ${count} ${count === 1 ? "palavra" : "palavras"} em ${formatRankingDuration(tempoResultadoMs)} · ${score.toLocaleString("pt-BR")} pts.`))
-      .catch(() => setRankingStatus("Não foi possível enviar o resultado para o ranking."));
+      .catch((error) => {
+        setRankingStatus(isDuplicateParticipantError(error) ? DUPLICATE_PARTICIPANT_MESSAGE : "Não foi possível enviar o resultado para o ranking.");
+      });
   }, [found.size, puzzle.words.length]);
 
   useEffect(() => {
@@ -123,6 +126,7 @@ export function WordSearchGame() {
     setPlayerPhone("");
     setFinalFoundCount(0);
     setFinalScore(0);
+    setIsCheckingParticipant(false);
     gameStartTime.current = null;
     gameStartDate.current = null;
     foundWords.current = [];
@@ -131,8 +135,8 @@ export function WordSearchGame() {
     currentPlayer.current = null;
   }
 
-  function start() {
-    if (phase !== "ready") return;
+  async function start() {
+    if (phase !== "ready" || isCheckingParticipant) return;
     const nome = sanitizePlayerName(playerName);
     const telefone = normalizePhone(playerPhone);
 
@@ -144,6 +148,25 @@ export function WordSearchGame() {
     if (!isValidBrazilianPhone(telefone)) {
       setFeedback("Informe um telefone brasileiro válido antes de começar.");
       return;
+    }
+
+    if (isRankingConfigured()) {
+      setIsCheckingParticipant(true);
+      setFeedback("Verificando se este participante já foi cadastrado...");
+
+      try {
+        const alreadyRegistered = await hasRegisteredParticipant(nome, telefone);
+
+        if (alreadyRegistered) {
+          setFeedback(DUPLICATE_PARTICIPANT_MESSAGE);
+          return;
+        }
+      } catch {
+        setFeedback("Não foi possível validar o cadastro agora. Tente novamente em instantes.");
+        return;
+      } finally {
+        setIsCheckingParticipant(false);
+      }
     }
 
     const now = performance.now();
@@ -358,7 +381,7 @@ export function WordSearchGame() {
                       />
                     </label>
                   </div>
-                  <button className="wordsearch-primary" onClick={start} type="button">Começar desafio <span aria-hidden="true">↗</span></button>
+                  <button className="wordsearch-primary" disabled={isCheckingParticipant} onClick={start} type="button">{isCheckingParticipant ? "Verificando..." : "Começar desafio"} <span aria-hidden="true">↗</span></button>
                   <span className="wordsearch-cover-foot">45 segundos para encontrar as conexões do universo PAGE.</span>
                 </div>
               )}

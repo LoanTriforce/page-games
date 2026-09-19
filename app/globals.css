@@ -321,3 +321,66 @@ button:disabled { cursor: default; }
 @media (prefers-reduced-motion: reduce) {
   .event-ranking-podium-card, .event-ranking-row { animation: none; }
 }
+
+.ranking-presentation-page { min-height: 100svh; position: relative; isolation: isolate; overflow: hidden; background: #06081f; color: var(--foreground); }
+.ranking-presentation-stage { min-height: 100svh; animation: ranking-presentation-fade .45s ease both; }
+.ranking-presentation-slide { min-height: 100svh; position: relative; display: grid; place-items: center; padding: 0; overflow: hidden; }
+.ranking-presentation-image { object-fit: contain; padding: 0; }
+.ranking-presentation-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; padding: 0; }
+.ranking-presentation-placeholder { width: min(1180px, 88vw); min-height: min(640px, 72svh); display: grid; place-items: center; align-content: center; gap: clamp(12px, 2vw, 24px); padding: clamp(34px, 5vw, 82px); border: 1px solid rgba(255, 255, 255, .16); border-radius: clamp(28px, 4vw, 56px); background: linear-gradient(145deg, rgba(255,255,255,.12), rgba(255,255,255,.04)); box-shadow: 0 32px 120px rgba(0,0,0,.35); text-align: center; }
+.ranking-presentation-placeholder span { color: var(--accent); font-size: clamp(16px, 1.5vw, 24px); font-weight: 1000; letter-spacing: 6px; text-transform: uppercase; }
+.ranking-presentation-placeholder strong { font-family: var(--font-display), system-ui, sans-serif; font-size: clamp(54px, 8vw, 132px); line-height: .9; letter-spacing: -5px; }
+.ranking-presentation-placeholder p { margin: 0; max-width: 760px; color: var(--muted); font-size: clamp(18px, 1.7vw, 28px); font-weight: 850; line-height: 1.35; }
+.ranking-presentation-placeholder code { color: #fff; font: inherit; font-weight: 1000; }
+.ranking-presentation-ranking { min-height: 100svh; display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: clamp(18px, 2.2vw, 34px); padding: clamp(30px, 3vw, 58px); }
+.ranking-presentation-ranking-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 22px; }
+.ranking-presentation-ranking-head p { margin: 0 0 8px; color: var(--accent); font-size: clamp(15px, 1.3vw, 24px); font-weight: 1000; letter-spacing: 6px; text-transform: uppercase; }
+.ranking-presentation-ranking-head h1 { margin: 0; font-family: var(--font-display), system-ui, sans-serif; font-size: clamp(60px, 7vw, 128px); line-height: .86; letter-spacing: -5px; }
+.ranking-presentation-ranking-head > span { color: var(--muted); font-size: clamp(16px, 1.2vw, 22px); font-weight: 900; text-align: right; }
+.ranking-presentation-state { padding: clamp(16px, 1.8vw, 26px); border: 1px solid var(--border); border-radius: 24px; background: rgba(255,255,255,.08); color: var(--muted); font-size: clamp(20px, 1.6vw, 30px); font-weight: 850; }
+.ranking-presentation-state strong { color: #fff; }
+.ranking-presentation-podium { display: grid; grid-template-columns: 1fr 1.18fr 1fr; align-items: end; gap: clamp(18px, 2vw, 32px); }
+.ranking-presentation-podium-card { min-height: clamp(210px, 23vh, 330px); display: flex; flex-direction: column; justify-content: space-between; padding: clamp(24px, 2.6vw, 42px); border: 1px solid var(--border); border-radius: clamp(28px, 2.8vw, 42px); background: linear-gradient(145deg, #171a4c, #0c0f34); box-shadow: 0 28px 90px rgba(0,0,0,.32); }
+.ranking-presentation-podium-card.rank-1 { min-height: clamp(260px, 30vh, 410px); order: 2; background: linear-gradient(145deg, #f7dc78, #91611a 46%, #2b1909); color: #fff8dd; }
+.ranking-presentation-podium-card.rank-2 { order: 1; }
+.ranking-presentation-podium-card.rank-3 { order: 3; }
+.ranking-presentation-medal { font-size: clamp(42px, 4vw, 72px); line-height: 1; }
+.ranking-presentation-podium-card > span:not(.ranking-presentation-medal) { color: var(--muted); font-size: clamp(14px, 1vw, 18px); font-weight: 1000; letter-spacing: 2px; text-transform: uppercase; }
+.ranking-presentation-podium-card.rank-1 > span:not(.ranking-presentation-medal) { color: #fff1a8; }
+.ranking-presentation-podium-card h2 { margin: 12px 0 0; font-family: var(--font-display), system-ui, sans-serif; font-size: clamp(34px, 3.5vw, 68px); line-height: .9; letter-spacing: -2px; overflow-wrap: anywhere; }
+.ranking-presentation-podium-card p { margin: 18px 0 0; color: var(--muted); font-size: clamp(18px, 1.45vw, 28px); font-weight: 950; }
+.ranking-presentation-podium-card.rank-1 p { color: #fff4bd; }
+.ranking-presentation-podium-card strong { margin-top: 8px; font-size: clamp(30px, 3vw, 56px); font-variant-numeric: tabular-nums; }
+.ranking-presentation-list { min-height: 0; border: 1px solid var(--border); border-radius: 30px; background: rgba(14,17,56,.82); overflow: hidden; }
+.ranking-presentation-list-head, .ranking-presentation-row { display: grid; grid-template-columns: 150px minmax(0, 1fr) 300px 220px; align-items: center; gap: 22px; }
+.ranking-presentation-list-head { padding: 18px 28px; color: var(--muted); background: rgba(255,255,255,.08); font-size: clamp(12px, .9vw, 16px); font-weight: 1000; letter-spacing: 1.8px; text-transform: uppercase; }
+.ranking-presentation-list ol { list-style: none; margin: 0; padding: 0; max-height: min(34vh, 410px); overflow: hidden; }
+.ranking-presentation-row { min-height: clamp(62px, 6vh, 86px); padding: 16px 28px; border-top: 1px solid var(--border); font-size: clamp(22px, 1.65vw, 34px); }
+.ranking-presentation-row > span:first-child { color: var(--muted); font-weight: 1000; }
+.ranking-presentation-row strong { font-family: var(--font-display), system-ui, sans-serif; font-size: clamp(26px, 2vw, 42px); letter-spacing: -1px; overflow-wrap: anywhere; }
+.ranking-presentation-row span, .ranking-presentation-row b { font-variant-numeric: tabular-nums; }
+.ranking-presentation-row b { font-weight: 1000; }
+.ranking-presentation-empty { margin: 0; padding: 28px; color: var(--muted); font-size: clamp(22px, 1.5vw, 32px); font-weight: 900; }
+.ranking-presentation-progress { position: fixed; left: 0; right: 0; bottom: 0; z-index: 3; height: 8px; background: rgba(255,255,255,.08); }
+.ranking-presentation-progress span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), #9f7cff); transition: width .2s linear; }
+.ranking-presentation-timer { position: fixed; right: clamp(18px, 2vw, 34px); bottom: clamp(20px, 2vw, 36px); z-index: 4; padding: 10px 14px; border: 1px solid rgba(255,255,255,.14); border-radius: 999px; background: rgba(5, 6, 21, .62); color: var(--muted); font-size: clamp(12px, .9vw, 15px); font-weight: 900; letter-spacing: 1.2px; text-transform: uppercase; backdrop-filter: blur(10px); }
+@keyframes ranking-presentation-fade { from { opacity: 0; transform: scale(1.01); } to { opacity: 1; transform: scale(1); } }
+@media (max-width: 1100px) {
+  .ranking-presentation-ranking-head { grid-template-columns: 1fr; }
+  .ranking-presentation-ranking-head > span { text-align: left; }
+  .ranking-presentation-podium { grid-template-columns: 1fr; }
+  .ranking-presentation-podium-card, .ranking-presentation-podium-card.rank-1 { min-height: 180px; order: initial; }
+  .ranking-presentation-list-head, .ranking-presentation-row { grid-template-columns: 86px minmax(0, 1fr) 190px 150px; gap: 14px; }
+}
+@media (max-width: 740px) {
+  .ranking-presentation-ranking { padding: 22px; }
+  .ranking-presentation-ranking-head h1 { letter-spacing: -2px; }
+  .ranking-presentation-list-head { display: none; }
+  .ranking-presentation-row { grid-template-columns: 64px minmax(0, 1fr); gap: 8px 14px; }
+  .ranking-presentation-row span:not(:first-child), .ranking-presentation-row b { grid-column: 2; font-size: 15px; }
+  .ranking-presentation-timer { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ranking-presentation-stage { animation: none; }
+  .ranking-presentation-progress span { transition: none; }
+}

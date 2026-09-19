@@ -31,6 +31,7 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
 const rankingTable = process.env.NEXT_PUBLIC_WORD_SEARCH_RANKING_TABLE?.trim() || "word_search_rankings";
 const MAX_ROUND_TIME_MS = 45_000;
 const POINTS_PER_WORD = 100_000;
+export const DUPLICATE_PARTICIPANT_MESSAGE = "Este nome ou telefone já foi registrado. Use credenciais ainda não utilizadas para participar.";
 export const RANKING_POLL_INTERVAL_MS = 3_000;
 
 const CRC32_TABLE = Array.from({ length: 256 }, (_, index) => {
@@ -52,6 +53,24 @@ function getSupabaseConfig() {
     throw new Error("Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY para ativar o ranking persistente.");
   }
   return { supabaseUrl, supabaseAnonKey, rankingTable };
+}
+
+function normalizeParticipantNameKey(name: string) {
+  return sanitizePlayerName(name)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR");
+}
+
+export class DuplicateParticipantError extends Error {
+  constructor() {
+    super(DUPLICATE_PARTICIPANT_MESSAGE);
+    this.name = "DuplicateParticipantError";
+  }
+}
+
+export function isDuplicateParticipantError(error: unknown) {
+  return error instanceof DuplicateParticipantError;
 }
 
 function getRankingEndpoint() {
@@ -381,6 +400,43 @@ function validateFoundWordDetails(details: FoundWordDetail[], wordsFound: number
   return details[details.length - 1]?.foundAtMs === elapsedMs;
 }
 
+export async function hasRegisteredParticipant(name: string, phone: string) {
+  const nome = sanitizePlayerName(name);
+  const telefone = normalizePhone(phone);
+
+  if (!nome || !isValidBrazilianPhone(telefone)) return false;
+
+  const config = getSupabaseConfig();
+  const params = new URLSearchParams({
+    select: "nome,telefone",
+  });
+  const response = await fetch(`${config.supabaseUrl}/rest/v1/${config.rankingTable}?${params}`, {
+    headers: {
+      ...getSupabaseHeaders(),
+      Accept: "application/json",
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) throw new Error("Não foi possível verificar o cadastro do participante.");
+
+  const payload = await response.json();
+  const registeredParticipants = Array.isArray(payload) ? payload : [];
+  const participantKey = normalizeParticipantNameKey(nome);
+
+  return registeredParticipants.some((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+
+    const registeredParticipant = entry as { nome?: unknown; telefone?: unknown };
+    const registeredName = registeredParticipant.nome;
+    const registeredPhone = registeredParticipant.telefone;
+    const hasSameName = typeof registeredName === "string" && normalizeParticipantNameKey(registeredName) === participantKey;
+    const hasSamePhone = typeof registeredPhone === "string" && normalizePhone(registeredPhone) === telefone;
+
+    return hasSameName || hasSamePhone;
+  });
+}
+
 export async function fetchRanking() {
   const response = await fetch(getRankingEndpoint(), {
     headers: {
@@ -440,5 +496,14 @@ export async function submitGameResult(input: GameResultInput, totalWords: numbe
     }),
   });
 
-  if (!response.ok && response.status !== 409) throw new Error("Não foi possível enviar o resultado para o ranking.");
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { code?: string; message?: string; details?: string } | null;
+    const details = `${payload?.code ?? ""} ${payload?.message ?? ""} ${payload?.details ?? ""}`;
+
+    if (response.status === 409 && (details.includes("word_search_rankings_participant_duplicate_guard") || details.includes("word_search_rankings_participant_name_unique_idx") || details.includes("word_search_rankings_participant_phone_unique_idx") || details.includes("word_search_rankings_participant_unique_idx"))) {
+      throw new DuplicateParticipantError();
+    }
+
+    throw new Error("Não foi possível enviar o resultado para o ranking.");
+  }
 }

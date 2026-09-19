@@ -66,6 +66,60 @@ create index word_search_rankings_order_idx
     data_finalizacao asc
   );
 
+drop index if exists public.word_search_rankings_participant_unique_idx;
+drop index if exists public.word_search_rankings_participant_name_unique_idx;
+drop index if exists public.word_search_rankings_participant_phone_unique_idx;
+
+create index if not exists word_search_rankings_participant_name_idx
+  on public.word_search_rankings (
+    translate(
+      lower(btrim(regexp_replace(nome, '\s+', ' ', 'g'))),
+      'áàâãäåéèêëíìîïóòôõöúùûüçñýÿ',
+      'aaaaaaeeeeiiiiooooouuuucnyy'
+    )
+  );
+
+create unique index if not exists word_search_rankings_participant_phone_unique_idx
+  on public.word_search_rankings (telefone);
+
+create or replace function public.prevent_duplicate_word_search_participant()
+returns trigger
+language plpgsql
+as $$
+declare
+  participant_name_key text;
+begin
+  participant_name_key := translate(
+    lower(btrim(regexp_replace(new.nome, '\s+', ' ', 'g'))),
+    'áàâãäåéèêëíìîïóòôõöúùûüçñýÿ',
+    'aaaaaaeeeeiiiiooooouuuucnyy'
+  );
+
+  if exists (
+    select 1
+    from public.word_search_rankings registered
+    where translate(
+      lower(btrim(regexp_replace(registered.nome, '\s+', ' ', 'g'))),
+      'áàâãäåéèêëíìîïóòôõöúùûüçñýÿ',
+      'aaaaaaeeeeiiiiooooouuuucnyy'
+    ) = participant_name_key
+    or registered.telefone = new.telefone
+  ) then
+    raise exception using
+      errcode = '23505',
+      message = 'word_search_rankings_participant_duplicate_guard';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists prevent_duplicate_word_search_participant_trigger on public.word_search_rankings;
+create trigger prevent_duplicate_word_search_participant_trigger
+  before insert on public.word_search_rankings
+  for each row
+  execute function public.prevent_duplicate_word_search_participant();
+
 alter table public.word_search_rankings enable row level security;
 
 drop policy if exists "word_search_rankings_public_read" on public.word_search_rankings;
